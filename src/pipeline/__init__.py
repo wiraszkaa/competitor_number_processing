@@ -1,0 +1,2 @@
+
+# makes 'pipeline' a module
