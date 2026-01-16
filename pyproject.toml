@@ -1,0 +1,15 @@
+[project]
+name = "image-search-app"
+version = "0.1.0"
+description = "Image search tool with PyQt6 GUI for selecting and uploading images to Google Drive"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "PyQt6>=6.4.0",
+    "google-api-python-client>=2.0.0",
+    "google-auth>=2.0.0",
+    "google-auth-oauthlib>=1.0.0",
+    "google-auth-httplib2>=0.1.0",
+    "requests>=2.31.0",
+    "Pillow>=10.0.0",
+]
