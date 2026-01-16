@@ -1,5 +1,4 @@
-"""
-Image Search & Upload Application
+# Image Search & Upload Application
 
 A PyQt6 application for searching images using Google Custom Search API,
 allowing manual selection, and uploading to Google Drive.
