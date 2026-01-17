@@ -9,8 +9,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional, Dict, Tuple
 
+import cv2
+import numpy as np
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
 
@@ -33,6 +35,12 @@ class PreprocessConfig:
     median_filter_size: int = 3  # 0 disables
     gaussian_blur_radius: float = 0.0  # 0 disables
 
+    # Grass-aware preprocessing for sports images (Spec 2.3)
+    # Enhances people detection on grass backgrounds
+    enable_grass_preprocessing: bool = False
+    grass_edge_enhancement: bool = True  # Add strong edges between grass and people
+    grass_sharpening: bool = True  # Sharpen non-grass regions
+
 
 def _resize_keep_aspect(img: Image.Image, max_long_edge: int) -> Image.Image:
     if max_long_edge <= 0:
@@ -47,6 +55,135 @@ def _resize_keep_aspect(img: Image.Image, max_long_edge: int) -> Image.Image:
     new_w = max(1, int(round(w * scale)))
     new_h = max(1, int(round(h * scale)))
     return img.resize((new_w, new_h), resample=Image.Resampling.LANCZOS)
+
+
+def _detect_grass_color(image_np: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Detect the dominant grass color in the image dynamically.
+
+    Args:
+        image_np: Input image as numpy array in BGR format
+
+    Returns:
+        Tuple of (lower_bound, upper_bound) in HSV color space
+    """
+    # Convert to HSV
+    hsv = cv2.cvtColor(image_np, cv2.COLOR_BGR2HSV)
+
+    # Focus on green hues (30-90 in HSV)
+    green_mask = cv2.inRange(hsv, np.array([30, 30, 30]), np.array([90, 255, 255]))
+
+    # Get pixels that are greenish
+    green_pixels = hsv[green_mask > 0]
+
+    if len(green_pixels) == 0:
+        # No green found, use default grass color
+        return np.array([35, 40, 40]), np.array([85, 255, 255])
+
+    # Calculate median of green pixels (more robust than mean)
+    median_h = int(np.median(green_pixels[:, 0]))
+    median_s = int(np.median(green_pixels[:, 1]))
+    median_v = int(np.median(green_pixels[:, 2]))
+
+    # Create wider range around the detected grass color
+    h_range = 15  # Hue tolerance
+    s_range = 60  # Saturation tolerance
+    v_range = 80  # Value tolerance
+
+    lower_bound = np.array(
+        [
+            max(0, median_h - h_range),
+            max(0, median_s - s_range),
+            max(0, median_v - v_range),
+        ]
+    )
+
+    upper_bound = np.array([min(179, median_h + h_range), 255, 255])
+
+    return lower_bound, upper_bound
+
+
+def _apply_grass_preprocessing(
+    img: Image.Image,
+    enable_edge_enhancement: bool = True,
+    enable_sharpening: bool = True,
+) -> Image.Image:
+    """
+    Apply grass-aware preprocessing to enhance people detection on grass backgrounds.
+
+    This preprocessing:
+    1. Dynamically detects the grass color in the image
+    2. Creates strong contours between grass and non-grass regions
+    3. Enhances contrast in non-grass areas (likely people)
+    4. Sharpens non-grass regions for better feature detection
+
+    Args:
+        img: Input PIL Image
+        enable_edge_enhancement: Add strong edges between grass and people
+        enable_sharpening: Sharpen non-grass regions
+
+    Returns:
+        Preprocessed PIL Image
+    """
+    # Convert PIL to numpy array (BGR for OpenCV)
+    img_np = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+
+    # Detect dominant grass color dynamically
+    lower_grass, upper_grass = _detect_grass_color(img_np)
+
+    # Convert to HSV for color segmentation
+    hsv = cv2.cvtColor(img_np, cv2.COLOR_BGR2HSV)
+
+    # Create mask for detected grass color
+    grass_mask = cv2.inRange(hsv, lower_grass, upper_grass)
+
+    # Apply aggressive morphological operations to fill grass regions
+    kernel_large = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+    grass_mask = cv2.morphologyEx(grass_mask, cv2.MORPH_CLOSE, kernel_large)
+    grass_mask = cv2.dilate(grass_mask, kernel_large, iterations=1)
+
+    # Invert to get non-grass areas (people)
+    non_grass_mask = cv2.bitwise_not(grass_mask)
+
+    # Clean up the non-grass mask
+    kernel_small = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    non_grass_mask = cv2.morphologyEx(non_grass_mask, cv2.MORPH_OPEN, kernel_small)
+
+    # Enhance contrast in non-grass regions
+    lab = cv2.cvtColor(img_np, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+
+    # Aggressive CLAHE on non-grass areas
+    clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
+    l_enhanced = clahe.apply(l)
+
+    # Apply enhancement only to non-grass areas
+    l_result = np.where(non_grass_mask > 0, l_enhanced, l)
+
+    enhanced = cv2.merge([l_result, a, b])
+    enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+
+    # Add edge enhancement if enabled
+    if enable_edge_enhancement:
+        # Find edges between grass and non-grass
+        edges = cv2.Canny(grass_mask, 50, 150)
+        edges_dilated = cv2.dilate(edges, kernel_small, iterations=2)
+
+        # Add edges to the image
+        edge_image = cv2.cvtColor(edges_dilated, cv2.COLOR_GRAY2BGR)
+        enhanced = cv2.add(enhanced, edge_image)
+
+    # Apply sharpening to non-grass areas if enabled
+    if enable_sharpening:
+        kernel_sharpen = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
+        sharpened = cv2.filter2D(enhanced, -1, kernel_sharpen)
+
+        # Apply sharpening only to non-grass areas
+        enhanced = np.where(non_grass_mask[:, :, np.newaxis] > 0, sharpened, enhanced)
+
+    # Convert back to PIL Image
+    result = cv2.cvtColor(enhanced, cv2.COLOR_BGR2RGB)
+    return Image.fromarray(result)
 
 
 def _apply_gamma(img: Image.Image, gamma: float) -> Image.Image:
@@ -132,9 +269,23 @@ def preprocess_image(
     img.save(denoise_path)
     paths["denoise"] = denoise_path
 
-    # Final output
+    # Final output WITHOUT grass enhancement (for OCR/number detection)
     final_path = out_dir / f"{stem}__final.png"
     img.save(final_path)
     paths["final"] = final_path
+
+    # Step 5: Grass-aware preprocessing (spec 2.3 - for sports images)
+    # This step enhances people detection on grass backgrounds
+    # Save separately as it makes numbers harder to detect
+    if cfg.enable_grass_preprocessing:
+        img_grass = _apply_grass_preprocessing(
+            img,
+            enable_edge_enhancement=cfg.grass_edge_enhancement,
+            enable_sharpening=cfg.grass_sharpening,
+        )
+
+        grass_path = out_dir / f"{stem}__grass_enhanced.png"
+        img_grass.save(grass_path)
+        paths["grass_enhanced"] = grass_path
 
     return paths

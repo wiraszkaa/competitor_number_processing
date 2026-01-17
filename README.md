@@ -156,6 +156,103 @@ processed_img.save("processed_event_photo.jpg")
 - Noise reduction filters
 - Sharpness enhancement
 - Configurable preprocessing pipeline
+- Grass-aware preprocessing for person detection
+
+#### Person Detection System
+
+The package includes a sophisticated person detection system specifically designed to work with sports event images, including challenging scenarios with grass backgrounds (HOG + SVM implementation per Spec 2.3).
+
+**Detection Algorithm:**
+
+The system uses a multi-stage detection approach combining classical computer vision techniques:
+
+1. **HOG + SVM Detection**
+   - Uses OpenCV's pre-trained Dalal-Triggs person detector
+   - HOG (Histogram of Oriented Gradients) extracts shape features
+   - SVM (Support Vector Machine) classifies detected regions
+   - Configuration: scale=1.03, min_size=(30,60), threshold=-1.0
+
+2. **Grass-Aware Preprocessing**
+   - Dynamically detects dominant grass color per image using HSV median
+   - Creates two preprocessing outputs:
+     - **Final version**: Standard preprocessing for OCR/number detection (uploaded to Drive)
+     - **Grass-enhanced version**: Enhanced contrast and edges for person detection (local only)
+   - Applies CLAHE (Contrast Limited Adaptive Histogram Equalization) to non-grass regions
+   - Edge enhancement and sharpening on grass areas
+
+3. **Enhanced Contour Detection**
+   - Detects color variations in grass to find people (different shades of green/clothing)
+   - Multi-channel variance analysis:
+     - Saturation difference > 30 from median
+     - Value (brightness) difference > 30 from median
+   - Dual-threshold Canny edge detection:
+     - Strong edges: 50/150 thresholds
+     - Weak edges: 20/60 thresholds (combined with strong)
+   - Structure validation: requires edge density > 2% within contour
+   - Minimum contour area: 1500 pixels
+   - Aspect ratio filtering for human-like shapes
+
+4. **Bounding Box Expansion**
+   - Expands detected boxes based on color similarity
+   - Uses flood fill to find connected regions of similar color
+   - Color similarity threshold: 25 (Euclidean distance in BGR space)
+   - Maximum expansion: 1.5x original box size (50% growth limit)
+   - Prevents over-aggressive merging of entire grass regions
+
+5. **Overlapping Box Merging**
+   - Merges nested and overlapping detections
+   - IoU (Intersection over Union) threshold: 0.5
+   - Also merges if one box is 70%+ contained in another
+   - Reduces duplicate detections and improves accuracy
+
+**Usage:**
+
+```python
+from competitor_number_processing.detector import PersonDetector, DetectionConfig
+
+# Configure detection
+config = DetectionConfig(
+    scale=1.03,              # Pyramid scale factor
+    min_neighbors=0,         # Minimum detections in group
+    min_size=(30, 60),       # Minimum person size (width, height)
+    threshold=-1.0,          # Detection threshold
+    min_contour_area=1500    # Minimum contour area for validation
+)
+
+# Detect people
+detector = PersonDetector(config)
+image = cv2.imread("sports_event.jpg")
+bounding_boxes = detector.detect(image)
+
+# Each bounding box: (x, y, width, height)
+for x, y, w, h in bounding_boxes:
+    cv2.rectangle(image, (x, y), (x+w, y+h), (0, 255, 0), 2)
+```
+
+**Pipeline Integration:**
+
+```bash
+# Full pipeline with preprocessing and detection
+uv run python main.py
+
+# Skip preprocessing step (use existing processed images)
+uv run python main.py --skip-preprocessing
+
+# Skip download step (use only local images)
+uv run python main.py --skip-download
+
+# Skip upload step (don't upload to Drive)
+uv run python main.py --skip-upload
+```
+
+The pipeline saves:
+- Detection visualizations to `cache/processed_local/detections/`
+- Grass-enhanced images to `cache/processed_local/grass_enhanced/`
+- Non-grass preprocessed images to Drive (for OCR/number detection)
+
+**Performance:**
+
+On typical sports event datasets with grass backgrounds, the system achieves robust detection with minimal false positives through the combination of HOG+SVM baseline, contour-based enhancement, and intelligent box merging.
 
 ### Supporting Tools
 

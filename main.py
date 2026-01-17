@@ -12,6 +12,7 @@ This script implements a collaborative preprocessing workflow:
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -19,6 +20,7 @@ from typing import Any, Dict, List, Tuple
 
 from competitor_number_processing.preprocess import PreprocessConfig, preprocess_image
 from competitor_number_processing.tracking import PreprocessingTracker
+from competitor_number_processing.detector import PersonDetector, DetectionConfig
 
 # Import drive_manager - need to add to path first
 sys.path.insert(0, str(Path(__file__).parent / "tools" / "drive_manager"))
@@ -43,6 +45,64 @@ def is_preprocessed(image_path: Path, output_dir: Path) -> bool:
     stem = image_path.stem
     final_file = output_dir / f"{stem}__final.png"
     return final_file.exists()
+
+
+def verify_and_update_preprocessing_status(
+    tracker: PreprocessingTracker,
+    manager: DriveManager,
+    preprocessed_folder_id: str,
+) -> int:
+    """
+    Verify that completed preprocessing records still have files on Drive.
+    If preprocessed files are missing from Drive, reset status to pending.
+
+    Returns:
+        Number of records reset to pending
+    """
+    print("🔍 Verifying preprocessing status against Drive...")
+
+    # Get all completed records
+    completed_records = tracker.get_completed_files()
+
+    if not completed_records:
+        print("   No completed records to verify")
+        return 0
+
+    print(f"   Checking {len(completed_records)} completed records...")
+
+    # Get list of files in preprocessed folder
+    try:
+        drive_files = manager.list_files_in_folder(folder_id=preprocessed_folder_id)
+        drive_file_ids = {f["id"] for f in drive_files}
+    except Exception as e:
+        print(f"   ⚠️  Could not access Drive folder: {e}")
+        return 0
+
+    reset_count = 0
+    for record in completed_records:
+        if (
+            record.drive_preprocessed_id
+            and record.drive_preprocessed_id not in drive_file_ids
+        ):
+            # File was removed from Drive - reset to pending
+            print(f"   ⚠️  {record.file_name}: preprocessed file missing from Drive")
+
+            # Update the record directly in tracker.records
+            record.preprocessing_status = "pending"
+            record.drive_preprocessed_id = None
+            record.processed_by = None
+            record.processed_timestamp = None
+            tracker.records[record.file_hash] = record
+
+            reset_count += 1
+
+    if reset_count > 0:
+        tracker.save()
+        print(f"   ✅ Reset {reset_count} record(s) to pending for reprocessing")
+    else:
+        print(f"   ✅ All completed records verified")
+
+    return reset_count
 
 
 def download_raw_images_not_yet_preprocessed(
@@ -225,9 +285,11 @@ def preprocess_and_upload_images(
 ) -> Dict[str, List[Path]]:
     """
     Preprocess images locally and upload to Drive.
+    - Uploads non-grass version to Drive (for number detection)
+    - Keeps grass-enhanced version locally (for person detection)
 
     Returns:
-        Dict with 'processed', 'uploaded', 'skipped', 'failed' keys.
+        Dict with 'processed', 'uploaded', 'skipped', 'failed', 'grass_enhanced' keys.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -238,6 +300,7 @@ def preprocess_and_upload_images(
     uploaded = []
     skipped = []
     failed = []
+    grass_enhanced = []
 
     # Filter only image files
     image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp"}
@@ -298,12 +361,18 @@ def preprocess_and_upload_images(
             )
 
             final_path = result_paths["final"]
-            print(f"  ✓ Preprocessed: {final_path.name}")
+            print(f"  ✓ Preprocessed (non-grass): {final_path.name}")
             processed.append(image_path)
 
-            # Upload to Drive if folder is configured
+            # Track grass-enhanced version if created
+            if "grass_enhanced" in result_paths:
+                grass_path = result_paths["grass_enhanced"]
+                print(f"  ✓ Grass-enhanced (local): {grass_path.name}")
+                grass_enhanced.append(grass_path)
+
+            # Upload NON-GRASS version to Drive (for number detection)
             if preprocessed_folder_id != "PLACEHOLDER_FOR_PREPROCESSED_FOLDER":
-                print(f"  ☁️  Uploading to Drive...")
+                print(f"  ☁️  Uploading non-grass version to Drive...")
                 # Temporarily set folder for upload
                 original_folder = manager.folder_id
                 manager.folder_id = preprocessed_folder_id
@@ -341,11 +410,33 @@ def preprocess_and_upload_images(
         "uploaded": uploaded,
         "skipped": skipped,
         "failed": failed,
+        "grass_enhanced": grass_enhanced,
     }
 
 
 def main():
     """Main entry point for collaborative preprocessing pipeline."""
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description="Competitor Number Preprocessing and Detection Pipeline"
+    )
+    parser.add_argument(
+        "--skip-preprocessing",
+        action="store_true",
+        help="Skip preprocessing steps and only run detection on existing grass-enhanced images",
+    )
+    parser.add_argument(
+        "--skip-download",
+        action="store_true",
+        help="Skip downloading raw images from Drive",
+    )
+    parser.add_argument(
+        "--skip-upload",
+        action="store_true",
+        help="Skip uploading preprocessed images to Drive",
+    )
+    args = parser.parse_args()
+
     print("=" * 70)
     print("Collaborative Competitor Number Preprocessing Pipeline")
     print("=" * 70)
@@ -364,76 +455,209 @@ def main():
     tracker = PreprocessingTracker(tracking_file, processor_id=processor_id)
     tracker.print_summary()
 
+    # Initialize Drive manager
+    credentials_path = config["google_drive"]["credentials_path"]
+    drive_manager = DriveManager(credentials_path)
+
+    # Verify preprocessing status against Drive (check if files were removed)
+    if not args.skip_preprocessing:
+        preprocessed_folder_id = config["google_drive"]["preprocessed_folder_id"]
+        if preprocessed_folder_id != "PLACEHOLDER_FOR_PREPROCESSED_FOLDER":
+            reset_count = verify_and_update_preprocessing_status(
+                tracker, drive_manager, preprocessed_folder_id
+            )
+            if reset_count > 0:
+                print(f"   🔄 {reset_count} image(s) will be reprocessed")
+                tracker.print_summary()
+
     # Step 1: Download raw images that need preprocessing
-    print("\n" + "=" * 70)
-    print("Step 1: Download Raw Images (Not Yet Preprocessed)")
-    print("=" * 70)
+    if not args.skip_preprocessing and not args.skip_download:
+        print("\n" + "=" * 70)
+        print("Step 1: Download Raw Images (Not Yet Preprocessed)")
+        print("=" * 70)
 
-    raw_files, drive_manager = download_raw_images_not_yet_preprocessed(config, tracker)
+        raw_files, drive_manager = download_raw_images_not_yet_preprocessed(
+            config, tracker
+        )
 
-    if raw_files:
-        print(f"\n✓ Downloaded {len(raw_files)} raw files that need preprocessing")
+        if raw_files:
+            print(f"\n✓ Downloaded {len(raw_files)} raw files that need preprocessing")
+        else:
+            print("\n✓ All raw files already downloaded or processed")
     else:
-        print("\n✓ All raw files already downloaded or processed")
+        if args.skip_preprocessing:
+            print("\n⏭️  Skipping download (preprocessing disabled)")
+        else:
+            print("\n⏭️  Skipping download (--skip-download flag)")
 
     # Step 2: Preprocess images locally and upload
-    print("\n" + "=" * 70)
-    print("Step 2: Preprocess Images & Upload to Drive")
-    print("=" * 70)
+    results = {
+        "processed": [],
+        "uploaded": [],
+        "skipped": [],
+        "failed": [],
+        "grass_enhanced": [],
+    }
 
-    cache_dir = Path(config["cache"]["directory"])
-    output_dir = cache_dir / "processed_local"
-    preprocess_config = PreprocessConfig(
-        max_long_edge=1280,
-        autocontrast=True,
-        gamma=1.0,
-        brightness=1.0,
-        median_filter_size=3,
-        gaussian_blur_radius=0.0,
-        contrast=1.0,
-    )
+    if not args.skip_preprocessing:
+        print("\n" + "=" * 70)
+        print("Step 2: Preprocess Images & Upload to Drive")
+        print("=" * 70)
 
-    # Get all raw files to check
-    raw_dir = Path(config["google_drive"]["download_dir_raw"])
-    all_raw_files = (
-        [
-            f
-            for f in raw_dir.iterdir()
-            if f.is_file()
-            and f.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp"}
-        ]
-        if raw_dir.exists()
-        else []
-    )
+        cache_dir = Path(config["cache"]["directory"])
+        output_dir = cache_dir / "processed_local"
+        preprocess_config = PreprocessConfig(
+            max_long_edge=1280,
+            autocontrast=True,
+            gamma=1.0,
+            brightness=1.0,
+            median_filter_size=3,
+            gaussian_blur_radius=0.0,
+            contrast=1.0,
+            enable_grass_preprocessing=True,  # Enable grass-aware preprocessing
+            grass_edge_enhancement=True,  # Add strong edges between grass and people
+            grass_sharpening=True,  # Sharpen non-grass regions
+        )
 
-    results = preprocess_and_upload_images(
-        all_raw_files, output_dir, preprocess_config, drive_manager, tracker, config
-    )
+        # Get all raw files to check
+        raw_dir = Path(config["google_drive"]["download_dir_raw"])
+        all_raw_files = (
+            [
+                f
+                for f in raw_dir.iterdir()
+                if f.is_file()
+                and f.suffix.lower()
+                in {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp"}
+            ]
+            if raw_dir.exists()
+            else []
+        )
 
-    # Step 3: Download preprocessed images from teammates
-    print("\n" + "=" * 70)
-    print("Step 3: Download Preprocessed Images from Team")
-    print("=" * 70)
-
-    team_preprocessed = download_preprocessed_images_from_team(
-        config, drive_manager, tracker
-    )
-
-    if team_preprocessed:
-        print(f"\n✓ Downloaded {len(team_preprocessed)} preprocessed files from team")
+        results = preprocess_and_upload_images(
+            all_raw_files, output_dir, preprocess_config, drive_manager, tracker, config
+        )
     else:
-        print("\n✓ No new preprocessed files from team")
+        print("\n⏭️  Skipping preprocessing (--skip-preprocessing flag)")
+        cache_dir = Path(config["cache"]["directory"])
+        output_dir = cache_dir / "processed_local"
+        # Find existing grass-enhanced images
+        existing_grass = list(output_dir.glob("*__grass_enhanced.png"))
+        results["grass_enhanced"] = existing_grass
+        print(f"   Found {len(existing_grass)} existing grass-enhanced images")
+
+    # Step 3: Detect people on grass-enhanced images
+    print("\n" + "=" * 70)
+    print("Step 3: Detect People on Grass-Enhanced Images")
+    print("=" * 70)
+
+    if results["grass_enhanced"]:
+        print(
+            f"\n🔍 Detecting people in {len(results['grass_enhanced'])} grass-enhanced images..."
+        )
+
+        # Initialize person detector with more sensitive settings
+        detection_config = DetectionConfig(
+            scale=1.03,  # Smaller scale for more detection attempts
+            min_neighbors=0,  # More lenient grouping
+            min_size=(30, 60),  # Smaller minimum size to catch distant people
+            threshold=-1.0,  # More lenient threshold
+            use_contour_detection=True,
+            min_contour_area=1500,  # Lower area threshold
+        )
+        detector = PersonDetector(detection_config)
+
+        # Create output directory for detection results
+        detections_dir = output_dir / "detections"
+        detections_dir.mkdir(parents=True, exist_ok=True)
+
+        total_detections = 0
+        for idx, grass_img_path in enumerate(results["grass_enhanced"], 1):
+            print(
+                f"\n[{idx}/{len(results['grass_enhanced'])}] Processing: {grass_img_path.name}"
+            )
+
+            # Get corresponding final image path (non-grass version)
+            final_img_path = output_dir / grass_img_path.name.replace(
+                "__grass_enhanced.png", "__final.png"
+            )
+
+            if not final_img_path.exists():
+                print(f"  ⚠️  Final image not found: {final_img_path.name}")
+                continue
+
+            try:
+                # Detect people on grass-enhanced image
+                detections = detector.detect_from_file(grass_img_path)
+                print(f"  ✓ Found {len(detections)} person(s)")
+                total_detections += len(detections)
+
+                if detections:
+                    # Visualize on FINAL image (non-grass version for better visualization)
+                    output_path = (
+                        detections_dir / f"{grass_img_path.stem}__detected.png"
+                    )
+                    detector.save_visualized_detections(
+                        final_img_path,  # Use final image instead of grass-enhanced
+                        output_path,
+                        detections=detections,
+                    )
+                    print(
+                        f"  💾 Saved visualization on final image: {output_path.name}"
+                    )
+
+                    # Print detection details
+                    for i, person in enumerate(detections, 1):
+                        print(
+                            f"     Person {i}: bbox=({person.x}, {person.y}, {person.width}, {person.height}), confidence={person.confidence:.2f}"
+                        )
+
+            except Exception as e:
+                print(f"  ❌ Detection failed: {e}")
+
+        print(f"\n✓ Total people detected: {total_detections}")
+        print(f"📁 Detection visualizations saved to: {detections_dir}")
+    else:
+        print("\n⏭️  No grass-enhanced images to process")
+
+    # Step 4: Download preprocessed images from teammates
+    if not args.skip_preprocessing:
+        print("\n" + "=" * 70)
+        print("Step 4: Download Preprocessed Images from Team")
+        print("=" * 70)
+
+        team_preprocessed = download_preprocessed_images_from_team(
+            config, drive_manager, tracker
+        )
+
+        if team_preprocessed:
+            print(
+                f"\n✓ Downloaded {len(team_preprocessed)} preprocessed files from team"
+            )
+        else:
+            print("\n✓ No new preprocessed files from team")
+    else:
+        team_preprocessed = []
+        print("\n⏭️  Skipping team download (preprocessing disabled)")
 
     # Summary
     print("\n" + "=" * 70)
     print("Processing Complete")
     print("=" * 70)
-    print(f"\n📊 This Session Summary:")
-    print(f"  • Newly preprocessed:  {len(results['processed'])}")
-    print(f"  • Uploaded to Drive:   {len(results['uploaded'])}")
-    print(f"  • Already done:        {len(results['skipped'])}")
-    print(f"  • Failed:              {len(results['failed'])}")
-    print(f"  • From team:           {len(team_preprocessed)}")
+
+    if not args.skip_preprocessing:
+        print(f"\n📊 This Session Summary:")
+        print(f"  • Newly preprocessed:  {len(results['processed'])}")
+        print(f"  • Uploaded to Drive:   {len(results['uploaded'])}")
+        print(f"  • Grass-enhanced:      {len(results['grass_enhanced'])}")
+        print(f"  • Already done:        {len(results['skipped'])}")
+        print(f"  • Failed:              {len(results['failed'])}")
+        print(f"  • From team:           {len(team_preprocessed)}")
+    else:
+        print(f"\n📊 Detection Summary:")
+        print(f"  • Grass-enhanced images: {len(results['grass_enhanced'])}")
+        print(
+            f"  • People detected:       {total_detections if results['grass_enhanced'] else 0}"
+        )
 
     # Updated tracker summary
     tracker.load()  # Reload to get latest
