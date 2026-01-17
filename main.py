@@ -79,10 +79,10 @@ def download_raw_images_not_yet_preprocessed(
     for drive_file in drive_files:
         file_id = drive_file["id"]
         file_name = drive_file["name"]
-        
+
         # Skip preprocessed files in raw folder (they shouldn't be there)
         if "__final" in file_name or any(
-            marker in file_name 
+            marker in file_name
             for marker in ["__resized", "__brightness", "__contrast", "__denoise"]
         ):
             print(f"  ⚠️  {file_name} - preprocessed file in raw folder, skipping")
@@ -92,14 +92,16 @@ def download_raw_images_not_yet_preprocessed(
                 record = tracker.get_record_by_file(local_path)
                 if record and record.preprocessing_status == "pending":
                     # Find the original raw file name (remove __final.png suffix)
-                    original_name = file_name.replace("__final.png", "").replace("__final.jpg", "")
+                    original_name = file_name.replace("__final.png", "").replace(
+                        "__final.jpg", ""
+                    )
                     print(f"      Marking as completed (already preprocessed)")
                     tracker.add_or_update_record(
-                        local_path, 
-                        drive_raw_id=file_id, 
+                        local_path,
+                        drive_raw_id=file_id,
                         status="completed",
                         local_preprocessed_path=local_path,
-                        drive_preprocessed_id=file_id
+                        drive_preprocessed_id=file_id,
                     )
             continue
 
