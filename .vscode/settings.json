@@ -1,0 +1,15 @@
+{
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}",
+    "${workspaceFolder}/tools/drive_manager",
+    "${workspaceFolder}/tools/image_search",
+    "${workspaceFolder}/tools/images_collector",
+    "${workspaceFolder}/tools/images_deduplicator"
+  ],
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportMissingTypeStubs": "none",
+    "reportUnknownMemberType": "none",
+    "reportUnknownVariableType": "none",
+    "reportUnknownArgumentType": "none"
+  }
+}

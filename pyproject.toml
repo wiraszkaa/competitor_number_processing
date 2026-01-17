@@ -1,15 +1,26 @@
 [project]
-name = "image-search-app"
+name = "competitor_number_processing"
 version = "0.1.0"
-description = "Image search tool with PyQt6 GUI for selecting and uploading images to Google Drive"
+description = "Competitor number processing package for extracting numbers from sports event images"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "PyQt6>=6.4.0",
-    "google-api-python-client>=2.0.0",
-    "google-auth>=2.0.0",
-    "google-auth-oauthlib>=1.0.0",
-    "google-auth-httplib2>=0.1.0",
-    "requests>=2.31.0",
     "Pillow>=10.0.0",
+    "images_collector",
+    "images_deduplicator",
+    "drive_manager",
 ]
+
+[project.scripts]
+images_collector = "images_collector.main:main"
+deduplicator = "images_deduplicator.cli:main"
+process = "main:main"
+
+[tool.uv.sources]
+images_collector = { path = "./tools/images_collector", editable = true }
+images_deduplicator = { path = "./tools/images_deduplicator", editable = true }
+drive_manager = { path = "./tools/drive_manager", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

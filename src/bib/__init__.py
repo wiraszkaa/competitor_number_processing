@@ -1,1 +1,0 @@
-"""Bib extraction utilities."""

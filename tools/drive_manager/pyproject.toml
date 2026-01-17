@@ -1,0 +1,15 @@
+[project]
+name = "drive_manager"
+version = "0.2.0"
+description = "Google Drive file management with OAuth 2.0 (upload, download, list, delete)"
+requires-python = ">=3.12"
+dependencies = [
+    "google-api-python-client>=2.0.0",
+    "google-auth>=2.0.0",
+    "google-auth-oauthlib>=1.0.0",
+    "google-auth-httplib2>=0.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

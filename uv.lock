@@ -82,6 +82,44 @@ wheels = [
 ]
 
 [[package]]
+name = "competitor-number-processing"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "drive-manager" },
+    { name = "images-collector" },
+    { name = "images-deduplicator" },
+    { name = "pillow" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "drive-manager", editable = "tools/drive_manager" },
+    { name = "images-collector", editable = "tools/images_collector" },
+    { name = "images-deduplicator", editable = "tools/images_deduplicator" },
+    { name = "pillow", specifier = ">=10.0.0" },
+]
+
+[[package]]
+name = "drive-manager"
+version = "0.2.0"
+source = { editable = "tools/drive_manager" }
+dependencies = [
+    { name = "google-api-python-client" },
+    { name = "google-auth" },
+    { name = "google-auth-httplib2" },
+    { name = "google-auth-oauthlib" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "google-api-python-client", specifier = ">=2.0.0" },
+    { name = "google-auth", specifier = ">=2.0.0" },
+    { name = "google-auth-httplib2", specifier = ">=0.1.0" },
+    { name = "google-auth-oauthlib", specifier = ">=1.0.0" },
+]
+
+[[package]]
 name = "google-api-core"
 version = "2.28.1"
 source = { registry = "https://pypi.org/simple" }
@@ -187,29 +225,47 @@ wheels = [
 ]
 
 [[package]]
-name = "image-search-app"
+name = "image-search"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "tools/image_search" }
 dependencies = [
-    { name = "google-api-python-client" },
-    { name = "google-auth" },
-    { name = "google-auth-httplib2" },
-    { name = "google-auth-oauthlib" },
     { name = "pillow" },
-    { name = "pyqt6" },
     { name = "requests" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "google-api-python-client", specifier = ">=2.0.0" },
-    { name = "google-auth", specifier = ">=2.0.0" },
-    { name = "google-auth-httplib2", specifier = ">=0.1.0" },
-    { name = "google-auth-oauthlib", specifier = ">=1.0.0" },
     { name = "pillow", specifier = ">=10.0.0" },
-    { name = "pyqt6", specifier = ">=6.4.0" },
     { name = "requests", specifier = ">=2.31.0" },
 ]
+
+[[package]]
+name = "images-collector"
+version = "0.1.0"
+source = { editable = "tools/images_collector" }
+dependencies = [
+    { name = "drive-manager" },
+    { name = "image-search" },
+    { name = "pyqt6" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "drive-manager", editable = "tools/drive_manager" },
+    { name = "image-search", editable = "tools/image_search" },
+    { name = "pyqt6", specifier = ">=6.4.0" },
+]
+
+[[package]]
+name = "images-deduplicator"
+version = "0.1.0"
+source = { editable = "tools/images_deduplicator" }
+dependencies = [
+    { name = "drive-manager" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "drive-manager", editable = "tools/drive_manager" }]
 
 [[package]]
 name = "oauthlib"

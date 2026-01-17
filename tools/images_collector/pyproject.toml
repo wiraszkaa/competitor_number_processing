@@ -1,0 +1,18 @@
+[project]
+name = "images_collector"
+version = "0.1.0"
+description = "Image collection GUI application"
+requires-python = ">=3.12"
+dependencies = [
+    "PyQt6>=6.4.0",
+    "drive_manager",
+    "image_search",
+]
+
+[tool.uv.sources]
+drive_manager = { path = "../drive_manager", editable = true }
+image_search = { path = "../image_search", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

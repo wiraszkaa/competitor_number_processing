@@ -1,0 +1,15 @@
+[project]
+name = "images_deduplicator"
+version = "0.1.0"
+description = "Remove duplicate images from Google Drive based on MD5 hash"
+requires-python = ">=3.12"
+dependencies = [
+    "drive_manager",
+]
+
+[tool.uv.sources]
+drive_manager = { path = "../drive_manager", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
