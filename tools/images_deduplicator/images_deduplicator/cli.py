@@ -25,31 +25,51 @@ def main():
     # Parse command line args for mode
     dry_run = True
     confirm_delete = False
+    folder_id = config["google_drive"]["raw_folder_id"]  # Default to raw_folder_id
 
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "--delete":
+    i = 1
+    while i < len(sys.argv):
+        arg = sys.argv[i]
+        if arg == "--delete":
             dry_run = False
             print("\n⚠️  DELETE MODE ACTIVATED")
             print("Files will be permanently deleted from Google Drive!\n")
-        elif sys.argv[1] == "--delete-confirm":
+        elif arg == "--delete-confirm":
             dry_run = False
             confirm_delete = True
             print("\n⚠️  DELETE MODE WITH CONFIRMATION ACTIVATED")
             print("Files will be permanently deleted from Google Drive!\n")
-        elif sys.argv[1] == "--help":
-            print("Usage: uv run deduplicator [--delete|--delete-confirm|--help]")
+        elif arg == "--folder-id":
+            if i + 1 < len(sys.argv):
+                folder_id = sys.argv[i + 1]
+                i += 1  # Skip next arg since we consumed it
+            else:
+                print("Error: --folder-id requires a folder ID argument")
+                return 1
+        elif arg == "--help":
+            print(
+                "Usage: uv run deduplicator [--delete|--delete-confirm|--folder-id <id>|--help]"
+            )
             print("\nModes:")
             print("  (no args)         : Dry run - scan and report only (safe)")
             print("  --delete          : Enable deletion but require confirmation")
             print("  --delete-confirm  : Delete duplicates immediately (dangerous!)")
+            print(
+                "  --folder-id <id>  : Specify Google Drive folder ID (default: raw_folder_id)"
+            )
             print("  --help            : Show this help message")
             return 0
+        else:
+            print(f"Error: Unknown argument '{arg}'")
+            print("Use --help for usage information")
+            return 1
+        i += 1
 
     print("=" * 80)
     print("GOOGLE DRIVE IMAGE DEDUPLICATOR")
     print("=" * 80)
     print(f"Mode: {'DRY RUN (safe)' if dry_run else 'DELETE MODE (destructive)'}")
-    print(f"Folder ID: {config['google_drive']['folder_id']}")
+    print(f"Folder ID: {folder_id}")
     print("=" * 80)
     print()
 
@@ -57,7 +77,7 @@ def main():
     print("Authenticating with Google Drive...")
     drive_manager = DriveManager(
         credentials_path=config["google_drive"]["credentials_path"],
-        folder_id=config["google_drive"]["folder_id"],
+        folder_id=folder_id,
     )
 
     # Create deduplicator
