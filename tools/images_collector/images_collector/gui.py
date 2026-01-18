@@ -300,7 +300,7 @@ class MainWindow(QMainWindow):
         try:
             self.uploader = DriveManager(
                 self.config["google_drive"]["credentials_path"],
-                self.config["google_drive"]["folder_id"],
+                self.config["google_drive"]["raw_folder_id"],
             )
         except Exception as e:
             QMessageBox.warning(
