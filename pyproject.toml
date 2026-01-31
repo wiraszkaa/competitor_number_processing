@@ -11,6 +11,7 @@ dependencies = [
     "images_collector",
     "images_deduplicator",
     "drive_manager",
+    "fpdf2>=2.8.5",
 ]
 
 [project.scripts]

@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Tuple
 from competitor_number_processing.preprocess import PreprocessConfig, preprocess_image
 from competitor_number_processing.tracking import PreprocessingTracker
 from competitor_number_processing.detector import PersonDetector, DetectionConfig
+from competitor_number_processing.digit_classifier import DigitClassifier
 
 # Import drive_manager - need to add to path first
 sys.path.insert(0, str(Path(__file__).parent / "tools" / "drive_manager"))
@@ -414,6 +415,199 @@ def preprocess_and_upload_images(
     }
 
 
+def detect_and_recognize_numbers_on_full_images(
+    preprocessed_dir: Path,
+    output_dir: Path,
+    digit_classifier: DigitClassifier = None
+) -> Dict[str, List]:
+    """
+    Wykrywa i rozpoznaje numery bezpośrednio na całych obrazach (bez wykrywania osób).
+    
+    Args:
+        preprocessed_dir: Katalog z przetworzonymi obrazami
+        output_dir: Katalog wyjściowy dla wizualizacji
+        digit_classifier: Opcjonalny wytrenowany klasyfikator cyfr
+        
+    Returns:
+        Słownik z wynikami
+    """
+    from competitor_number_processing.detector import NumberRegionDetector, NumberDetectionConfig
+    import cv2
+    
+    print("\n" + "=" * 70)
+    print("🔍 WYKRYWANIE I ROZPOZNAWANIE NUMERÓW NA CAŁYCH OBRAZACH")
+    print("=" * 70)
+    
+    # Stwórz katalog wyjściowy
+    numbers_output_dir = output_dir / "number_recognition_full"
+    numbers_output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Znajdź przetworzone obrazy
+    image_files = list(preprocessed_dir.glob("*_final.png")) + list(preprocessed_dir.glob("*_final.jpg"))
+    
+    if not image_files:
+        print("⚠️  Brak przetworzonych obrazów do analizy")
+        return {"processed": 0, "total_digits": 0}
+    
+    print(f"📂 Znaleziono {len(image_files)} przetworzonych obrazów")
+    
+    # Konfiguracja detektora numerów (tylko MSER)
+    number_config = NumberDetectionConfig(
+        min_region_size=(20, 35),
+        max_region_size=(150, 250),
+        min_aspect_ratio=1.0,
+        max_aspect_ratio=3.5,
+        min_fill_ratio=0.25,
+        max_fill_ratio=0.85,
+        min_edge_density=0.08,
+        use_mser=True,
+        use_canny=False,
+        use_hsv=False,
+        use_adaptive=False,
+        nms_iou_threshold=0.4,
+        min_confidence=0.5,
+        max_candidates_per_person=20,
+        group_digits=False
+    )
+    
+    number_detector = NumberRegionDetector(number_config)
+    
+    # Sprawdź czy mamy klasyfikator
+    use_classifier = digit_classifier is not None
+    if use_classifier:
+        print("✅ Klasyfikator cyfr aktywny - numery będą rozpoznawane")
+    else:
+        print("⚠️  Brak klasyfikatora - tylko detekcja regionów")
+    
+    print()
+    
+    # Statystyki
+    total_candidates = 0
+    total_recognized = 0
+    processed_count = 0
+    
+    # Przetwarzaj obrazy
+    for idx, image_path in enumerate(image_files, 1):
+        print(f"\n[{idx}/{len(image_files)}] {image_path.name}")
+        
+        # Wczytaj obraz
+        image = cv2.imread(str(image_path))
+        if image is None:
+            print(f"  ❌ Nie można wczytać obrazu")
+            continue
+        
+        print(f"  Rozmiar: {image.shape[1]}x{image.shape[0]}")
+        
+        # Wykryj regiony cyfr
+        print(f"  🔍 Wykrywanie regionów cyfr (MSER)...")
+        candidates = number_detector.detect_candidates(image)
+        print(f"  ✅ Znaleziono {len(candidates)} kandydatów")
+        
+        total_candidates += len(candidates)
+        
+        # Rozpoznaj cyfry jeśli mamy klasyfikator
+        recognized_digits = []
+        if candidates and use_classifier:
+            print(f"  🤖 Rozpoznawanie cyfr (SVM+HOG)...")
+            
+            for candidate in candidates:
+                x, y, w, h = candidate.x, candidate.y, candidate.width, candidate.height
+                
+                # Sprawdź czy region jest w granicach obrazu
+                if y < 0 or x < 0 or y + h > image.shape[0] or x + w > image.shape[1]:
+                    continue
+                
+                digit_roi = image[y:y+h, x:x+w]
+                
+                if digit_roi.size > 0:
+                    try:
+                        result = digit_classifier.predict(digit_roi)
+                        recognized_digits.append((candidate, result))
+                        total_recognized += 1
+                    except Exception as e:
+                        print(f"    ⚠️  Błąd rozpoznawania: {e}")
+            
+            # Pokaż top 5 rozpoznanych cyfr
+            if recognized_digits:
+                top_5 = sorted(recognized_digits, key=lambda x: x[1].confidence, reverse=True)[:5]
+                print(f"  ⭐ Top 5 rozpoznanych cyfr:")
+                for i, (cand, result) in enumerate(top_5, 1):
+                    print(f"     {i}. Cyfra: {result.digit} (pewność: {result.confidence:.2f}, detekcja: {cand.confidence:.2f})")
+        
+        # Wizualizacja
+        viz_image = image.copy()
+        
+        # Rysuj kandydatów z rozpoznanymi cyframi
+        for candidate in candidates:
+            x, y, w, h = candidate.x, candidate.y, candidate.width, candidate.height
+            color = (255, 0, 255)  # Magenta
+            
+            cv2.rectangle(viz_image, (x, y), (x + w, y + h), color, 2)
+            
+            # Dodaj rozpoznaną cyfrę jeśli dostępna
+            if use_classifier:
+                for cand, result in recognized_digits:
+                    if cand == candidate:
+                        label = f"{result.digit}"
+                        font = cv2.FONT_HERSHEY_SIMPLEX
+                        font_scale = 1.0
+                        font_thickness = 2
+                        
+                        (label_w, label_h), _ = cv2.getTextSize(label, font, font_scale, font_thickness)
+                        
+                        # Tło
+                        cv2.rectangle(viz_image, (x, y - label_h - 10), (x + label_w + 10, y), color, -1)
+                        
+                        # Tekst
+                        cv2.putText(viz_image, label, (x + 5, y - 5), font, font_scale, (255, 255, 255), font_thickness)
+                        break
+        
+        # Dodaj legendę
+        legend_bg_color = (0, 0, 0)
+        legend_height = 100 if use_classifier else 80
+        overlay = viz_image.copy()
+        cv2.rectangle(overlay, (0, 0), (450, legend_height), legend_bg_color, -1)
+        viz_image = cv2.addWeighted(overlay, 0.7, viz_image, 0.3, 0)
+        
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.6
+        font_thickness = 2
+        line_height = 25
+        y_offset = 25
+        
+        title = "ROZPOZNAWANIE CYFR" if use_classifier else "DETEKCJA CYFR"
+        cv2.putText(viz_image, title, (10, y_offset), font, font_scale, (255, 255, 255), font_thickness)
+        y_offset += line_height
+        
+        cv2.rectangle(viz_image, (10, y_offset - 15), (30, y_offset + 5), (255, 0, 255), 2)
+        info_text = f"MSER: {len(candidates)} kandydatow"
+        cv2.putText(viz_image, info_text, (40, y_offset), font, 0.5, (255, 0, 255), 1)
+        y_offset += line_height
+        
+        if use_classifier:
+            cv2.putText(viz_image, "Cyfry: SVM+HOG", (10, y_offset), font, 0.5, (255, 255, 255), 1)
+        
+        # Zapisz
+        output_path = numbers_output_dir / f"{image_path.stem}_numbers.jpg"
+        cv2.imwrite(str(output_path), viz_image)
+        
+        processed_count += 1
+    
+    print("\n" + "=" * 70)
+    print(f"✅ Przetworzono {processed_count} obrazów")
+    print(f"📊 Wykrytych regionów cyfr: {total_candidates}")
+    if use_classifier:
+        print(f"🔢 Rozpoznanych cyfr: {total_recognized}")
+    print(f"💾 Wizualizacje zapisane w: {numbers_output_dir}")
+    print("=" * 70)
+    
+    return {
+        "processed": processed_count,
+        "total_digits": total_candidates,
+        "recognized": total_recognized if use_classifier else 0
+    }
+
+
 def main():
     """Main entry point for collaborative preprocessing pipeline."""
     # Parse command-line arguments
@@ -619,6 +813,40 @@ def main():
     else:
         print("\n⏭️  No grass-enhanced images to process")
 
+    # Step 3b: Wykrywanie i rozpoznawanie cyfr bezpośrednio na całych obrazach
+    print("\n" + "=" * 70)
+    print("Step 3b: Number Detection and Recognition on Full Images")
+    print("=" * 70)
+    
+    # Upewnij się że mamy zdefiniowane ścieżki
+    cache_dir = Path(config["cache"]["directory"])
+    output_dir = cache_dir / "processed_local"
+    
+    # Wczytaj klasyfikator cyfr jeśli istnieje
+    model_path = Path("models/digit_classifier.pkl")
+    digit_classifier = None
+    
+    if model_path.exists():
+        print("✅ Ładowanie klasyfikatora cyfr...")
+        try:
+            digit_classifier = DigitClassifier()
+            digit_classifier.load_model(model_path)
+            print("   Klasyfikator załadowany pomyślnie")
+        except Exception as e:
+            print(f"   ⚠️  Błąd ładowania klasyfikatora: {e}")
+            digit_classifier = None
+    else:
+        print("⚠️  Brak modelu klasyfikatora cyfr")
+        print("   Uruchom: uv run python train_digit_classifier.py")
+        print("   Program wykryje tylko regiony cyfr bez rozpoznawania")
+    
+    # Wykryj i rozpoznaj cyfry na przetworzonych obrazach
+    number_results = detect_and_recognize_numbers_on_full_images(
+        preprocessed_dir=output_dir,
+        output_dir=cache_dir,
+        digit_classifier=digit_classifier
+    )
+
     # Step 4: Download preprocessed images from teammates
     if not args.skip_preprocessing:
         print("\n" + "=" * 70)
@@ -652,12 +880,21 @@ def main():
         print(f"  • Already done:        {len(results['skipped'])}")
         print(f"  • Failed:              {len(results['failed'])}")
         print(f"  • From team:           {len(team_preprocessed)}")
+        print(f"\n📊 Number Detection Summary:")
+        print(f"  • Images analyzed:     {number_results.get('processed', 0)}")
+        print(f"  • Digit regions found: {number_results.get('total_digits', 0)}")
+        if digit_classifier:
+            print(f"  • Digits recognized:   {number_results.get('recognized', 0)}")
     else:
         print(f"\n📊 Detection Summary:")
         print(f"  • Grass-enhanced images: {len(results['grass_enhanced'])}")
         print(
             f"  • People detected:       {total_detections if results['grass_enhanced'] else 0}"
         )
+        print(f"  • Images analyzed:       {number_results.get('processed', 0)}")
+        print(f"  • Digit regions found:   {number_results.get('total_digits', 0)}")
+        if digit_classifier:
+            print(f"  • Digits recognized:     {number_results.get('recognized', 0)}")
 
     # Updated tracker summary
     tracker.load()  # Reload to get latest
