@@ -8,20 +8,23 @@ dependencies = [
     "Pillow>=10.0.0",
     "opencv-python>=4.8.0",
     "numpy>=1.24.0",
+    "tqdm>=4.66.0",
     "images_collector",
     "images_deduplicator",
     "drive_manager",
+    "roboflow_manager",
 ]
 
 [project.scripts]
 images_collector = "images_collector.main:main"
 deduplicator = "images_deduplicator.cli:main"
-process = "main:main"
+process = "main:entry_point"
 
 [tool.uv.sources]
 images_collector = { path = "./tools/images_collector", editable = true }
 images_deduplicator = { path = "./tools/images_deduplicator", editable = true }
 drive_manager = { path = "./tools/drive_manager", editable = true }
+roboflow_manager = { path = "./tools/roboflow_manager", editable = true }
 
 [build-system]
 requires = ["hatchling"]

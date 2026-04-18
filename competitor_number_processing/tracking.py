@@ -24,10 +24,6 @@ class PreprocessingRecord:
     drive_raw_id: Optional[str] = None  # File ID in raw folder
     drive_preprocessed_id: Optional[str] = None  # File ID in preprocessed folder
     preprocessing_status: str = "pending"  # pending, in_progress, completed, failed
-    processed_by: Optional[str] = None  # Name/ID of person who processed it
-    processed_timestamp: Optional[str] = None
-    local_raw_path: Optional[str] = None
-    local_preprocessed_path: Optional[str] = None
     error_message: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -43,16 +39,14 @@ class PreprocessingRecord:
 class PreprocessingTracker:
     """Manages preprocessing tracking across the team."""
 
-    def __init__(self, tracking_file: Path, processor_id: str = "default"):
+    def __init__(self, tracking_file: Path):
         """
         Initialize the tracker.
 
         Args:
             tracking_file: Path to the JSON tracking file
-            processor_id: ID of the current processor (e.g., your name)
         """
         self.tracking_file = Path(tracking_file)
-        self.processor_id = processor_id
         self.records: Dict[str, PreprocessingRecord] = {}
         self.load()
 
@@ -116,7 +110,6 @@ class PreprocessingTracker:
         drive_raw_id: Optional[str] = None,
         drive_preprocessed_id: Optional[str] = None,
         status: Optional[str] = None,
-        local_preprocessed_path: Optional[Path] = None,
         error: Optional[str] = None,
     ) -> PreprocessingRecord:
         """
@@ -127,7 +120,6 @@ class PreprocessingTracker:
             drive_raw_id: Google Drive ID of raw file
             drive_preprocessed_id: Google Drive ID of preprocessed file
             status: New status
-            local_preprocessed_path: Path to local preprocessed file
             error: Error message if failed
 
         Returns:
@@ -142,7 +134,6 @@ class PreprocessingTracker:
             record = PreprocessingRecord(
                 file_name=file_path.name,
                 file_hash=file_hash,
-                local_raw_path=str(file_path),
             )
 
         # Update fields
@@ -152,11 +143,6 @@ class PreprocessingTracker:
             record.drive_preprocessed_id = drive_preprocessed_id
         if status is not None:
             record.preprocessing_status = status
-            if status == "completed":
-                record.processed_by = self.processor_id
-                record.processed_timestamp = datetime.now().isoformat()
-        if local_preprocessed_path is not None:
-            record.local_preprocessed_path = str(local_preprocessed_path)
         if error is not None:
             record.error_message = error
             record.preprocessing_status = "failed"
@@ -204,14 +190,13 @@ class PreprocessingTracker:
     def mark_as_completed(
         self,
         file_path: Path,
-        preprocessed_path: Path,
+        preprocessed_path: Optional[Path] = None,
         drive_preprocessed_id: Optional[str] = None,
     ) -> PreprocessingRecord:
         """Mark a file as successfully preprocessed."""
         return self.add_or_update_record(
             file_path,
             status="completed",
-            local_preprocessed_path=preprocessed_path,
             drive_preprocessed_id=drive_preprocessed_id,
         )
 

@@ -5,6 +5,7 @@ Google Drive manager module - handles authentication and file management
 
 import hashlib
 import io
+import logging
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, List, Tuple
 from google.auth.transport.requests import Request
@@ -13,6 +14,8 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from googleapiclient.errors import HttpError
+
+logger = logging.getLogger(__name__)
 
 
 class DriveManager:
@@ -67,9 +70,9 @@ class DriveManager:
                     token.write(creds.to_json())
 
             self.service = build("drive", "v3", credentials=creds)
-            print("Successfully authenticated with Google Drive")
+            logger.debug("Successfully authenticated with Google Drive")
         except Exception as e:
-            print(f"Error authenticating with Google Drive: {e}")
+            logger.error(f"Error authenticating with Google Drive: {e}")
             raise
 
     def upload_file(
@@ -90,7 +93,7 @@ class DriveManager:
             Google Drive file ID if successful, None otherwise
         """
         if not file_path.exists():
-            print(f"File not found: {file_path}")
+            logger.error(f"File not found: {file_path}")
             return None
 
         try:
@@ -117,15 +120,15 @@ class DriveManager:
             )
 
             file_id = file.get("id")
-            print(f"Uploaded {file_path.name} to Drive (ID: {file_id})")
+            logger.debug(f"Uploaded {file_path.name} to Drive (ID: {file_id})")
 
             return file_id
 
         except HttpError as e:
-            print(f"HTTP error uploading file: {e}")
+            logger.error(f"HTTP error uploading file: {e}")
             return None
         except Exception as e:
-            print(f"Error uploading file: {e}")
+            logger.error(f"Error uploading file: {e}")
             return None
 
     def upload_multiple(
@@ -172,7 +175,7 @@ class DriveManager:
             return folder
 
         except HttpError as e:
-            print(f"Error getting folder info: {e}")
+            logger.debug(f"Error getting folder info: {e}")
             return None
 
     def create_folder(
@@ -204,12 +207,12 @@ class DriveManager:
             )
 
             folder_id = folder.get("id")
-            print(f"Created folder '{folder_name}' (ID: {folder_id})")
+            logger.debug(f"Created folder '{folder_name}' (ID: {folder_id})")
 
             return folder_id
 
         except HttpError as e:
-            print(f"Error creating folder: {e}")
+            logger.debug(f"Error creating folder: {e}")
             return None
 
     @staticmethod
@@ -231,10 +234,10 @@ class DriveManager:
         """Delete a file from Google Drive"""
         try:
             self.service.files().delete(fileId=file_id).execute()
-            print(f"Deleted file (ID: {file_id})")
+            logger.debug(f"Deleted file (ID: {file_id})")
             return True
         except HttpError as e:
-            print(f"Error deleting file: {e}")
+            logger.debug(f"Error deleting file: {e}")
             return False
 
     def delete_files(self, file_ids: List[str]) -> Dict[str, bool]:
@@ -267,7 +270,7 @@ class DriveManager:
         """
         folder_id = folder_id or self.folder_id
         if not folder_id:
-            print("No folder ID provided")
+            logger.error("No folder ID provided")
             return []
 
         try:
@@ -292,11 +295,11 @@ class DriveManager:
                 if page_token is None:
                     break
 
-            print(f"Found {len(files)} files in folder {folder_id}")
+            logger.debug(f"Found {len(files)} files in folder {folder_id}")
             return files
 
         except HttpError as e:
-            print(f"Error listing files: {e}")
+            logger.debug(f"Error listing files: {e}")
             return []
 
     def download_file(
@@ -335,16 +338,16 @@ class DriveManager:
                         local_md5 = self._calculate_md5(local_path)
 
                         if local_md5 == drive_md5:
-                            print(
+                            logger.debug(
                                 f"Skipping {local_path.name} (already exists with matching hash)"
                             )
                             return True
                         else:
-                            print(
+                            logger.debug(
                                 f"Hash mismatch for {local_path.name}, re-downloading"
                             )
                 else:
-                    print(f"Skipping {local_path.name} (already exists)")
+                    logger.debug(f"Skipping {local_path.name} (already exists)")
                     return True
 
             # Create parent directory if it doesn't exist
@@ -360,16 +363,16 @@ class DriveManager:
                 status, done = downloader.next_chunk()
                 if status:
                     progress = int(status.progress() * 100)
-                    print(f"Downloading {local_path.name}: {progress}%", end="\r")
+                    logger.debug(f"Downloading {local_path.name}: {progress}%", end="\r")
 
-            print(f"Downloaded {local_path.name}" + " " * 20)  # Clear progress line
+            logger.debug(f"Downloaded {local_path.name}" + " " * 20)  # Clear progress line
             return True
 
         except HttpError as e:
-            print(f"Error downloading file {file_id}: {e}")
+            logger.debug(f"Error downloading file {file_id}: {e}")
             return False
         except Exception as e:
-            print(f"Error downloading file: {e}")
+            logger.debug(f"Error downloading file: {e}")
             return False
 
     def download_all_from_folder(
@@ -398,7 +401,7 @@ class DriveManager:
         files = self.list_files_in_folder(folder_id)
 
         if not files:
-            print("No files to download")
+            logger.debug("No files to download")
             return (0, 0)
 
         successful = 0
@@ -414,7 +417,7 @@ class DriveManager:
             else:
                 failed += 1
 
-        print(f"Download complete: {successful} successful, {failed} failed")
+        logger.debug(f"Download complete: {successful} successful, {failed} failed")
         return (successful, failed)
 
     @staticmethod
