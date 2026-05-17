@@ -10,6 +10,8 @@ from competitor_number_processing.detector import (
     detect_people,
     extract_competitor_regions,
 )
+from competitor_number_processing.cnn_detector import YOLODetectionConfig, YOLOv8BibDetector
+from competitor_number_processing.ocr import BibOCR, OCRResult
 
 __all__ = [
     "PreprocessConfig",
@@ -19,4 +21,8 @@ __all__ = [
     "PersonDetector",
     "detect_people",
     "extract_competitor_regions",
+    "YOLODetectionConfig",
+    "YOLOv8BibDetector",
+    "BibOCR",
+    "OCRResult",
 ]

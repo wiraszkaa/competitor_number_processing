@@ -13,12 +13,17 @@ dependencies = [
     "images_deduplicator",
     "drive_manager",
     "roboflow_manager",
+    "ultralytics>=8.2.0",
+    "easyocr>=1.7.0",
+    "roboflow>=1.1.0",
 ]
 
 [project.scripts]
 images_collector = "images_collector.main:main"
 deduplicator = "images_deduplicator.cli:main"
-process = "main:entry_point"
+preprocess = "main:preprocess_entry_point"
+train = "main:train_entry_point"
+process = "main:process_entry_point"
 
 [tool.uv.sources]
 images_collector = { path = "./tools/images_collector", editable = true }

@@ -1,61 +1,36 @@
 # Competitor Number Processing System
 
-A multimedia data analysis project for extracting and processing competitor numbers from sports event images. The system includes tools for collecting training images from the web, managing them on Google Drive, and **collaborative preprocessing pipeline** for team-based image processing.
+Extracts and reads competitor bib numbers from sports event photos (marathons, cycling, triathlon). The full pipeline covers image collection → preprocessing → annotation → model training → inference.
 
-## Project Overview
+## Pipeline Overview
 
-**Main Purpose**: Extract and analyze competitor numbers from sports event images (marathons, cycling races, triathlons, etc.) for participant identification and tracking.
-
-**Core Pipeline**:
-
-- **Main Pipeline** ([main.py](main.py)): Collaborative preprocessing workflow
-  - Downloads raw images from Google Drive
-  - Preprocesses images (resize, contrast, noise reduction)
-  - Uploads processed images to shared folder
-  - Syncs with team members' processed images
-  - Tracks processing status in tracking.json
-
-**Supporting Tools**:
-
-- **competitor_number_processing**: Core preprocessing pipeline for competitor number images
-- **images_collector**: GUI tool for searching and collecting training images from the web
-- **drive_manager**: Bidirectional Google Drive file management
-- **images_deduplicator**: Remove duplicate images from training datasets
-- **image_search**: Google Custom Search API integration with duplicate tracking
-
-This is an educational project for multimedia data analysis at WSB University.
-
-## Quick Start
-
-### 1. Install UV (Python Package Manager)
-
-If you don't have UV installed:
-
-```bash
-# Windows (PowerShell)
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# macOS/Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+uv run images_collector     # 1. Collect training images → Google Drive
+uv run deduplicator         # 2. Remove duplicates from Drive
+uv run preprocess           # 3. Preprocess + upload to Drive + upload to Roboflow
+                            #    (annotate images in Roboflow UI)
+uv run train                # 4. Download annotated dataset + train YOLO + fine-tune OCR
+uv run process <image>      # 5. Detect and read bib numbers
 ```
 
-### 2. Clone and Setup
+## Setup
+
+### Install
 
 ```bash
-# Clone the repository
+# Install UV
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"   # Windows
+curl -LsSf https://astral.sh/uv/install.sh | sh               # macOS/Linux
+
+# Clone and install
 git clone <repository-url>
 cd analiza_danych_multimedialnych
-
-# Install all dependencies
 uv sync
 ```
 
-### 3. Configure API Credentials
-
-Copy the example config and edit it:
+### Configure
 
 ```bash
-# Copy example config
 cp secrets/config.example.json secrets/config.json
 ```
 
@@ -70,8 +45,12 @@ Edit `secrets/config.json`:
   },
   "google_drive": {
     "credentials_path": "secrets/client_secret.json",
-    "folder_id": "YOUR_DRIVE_FOLDER_ID",
-    "download_dir": "cache/downloads"
+    "raw_folder_id": "YOUR_RAW_FOLDER_ID",
+    "preprocessed_folder_id": "YOUR_PREPROCESSED_FOLDER_ID",
+    "tracking_drive_folder_id": "YOUR_TRACKING_FOLDER_ID",
+    "bib_crops_drive_folder_id": "YOUR_BIB_CROPS_FOLDER_ID",
+    "download_dir_raw": "cache/raw",
+    "download_dir_preprocessed": "cache/preprocessed"
   },
   "cache": {
     "directory": "cache",
@@ -79,479 +58,182 @@ Edit `secrets/config.json`:
   },
   "tracking": {
     "file": "tracking.json"
+  },
+  "roboflow": {
+    "api_key": "YOUR_ROBOFLOW_API_KEY",
+    "workspace": "your_workspace",
+    "project": "your_project",
+    "version": 1,
+    "format": "yolo",
+    "download_dir": "cache/roboflow_datasets"
   }
 }
 ```
 
-### 4. Setup Google Drive OAuth
+**Drive folder IDs** — create four folders in Google Drive and paste their IDs:
+- `raw_folder_id` — raw photos uploaded by the collector
+- `preprocessed_folder_id` — preprocessed images ready for Roboflow
+- `tracking_drive_folder_id` — stores `tracking.json` (shared state across machines)
+- `bib_crops_drive_folder_id` — stores `labels.csv` with OCR ground truth annotations
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Enable "Google Drive API"
-3. Create **OAuth Client ID** (Desktop app)
-4. Download credentials and save as `secrets/client_secret.json`
-5. Add your email to "Test Users" in OAuth consent screen
+### Google Drive OAuth
 
-**Important**: After setup, delete `secrets/token.json` if it exists (scope changed to full Drive access)
+1. [Google Cloud Console](https://console.cloud.google.com/) → Enable **Google Drive API**
+2. Credentials → Create → **OAuth Client ID** (Desktop app) → download JSON
+3. Save as `secrets/client_secret.json`
+4. Add your email to "Test Users" in the OAuth consent screen
 
-### 5. Configure Preprocessing Folders
+On first run a browser window opens for authentication; token is saved automatically.
 
-For collaborative preprocessing, create two folders in Google Drive:
+### Google Custom Search (for image collector)
 
-- **Raw folder**: Contains original, unprocessed images
-- **Preprocessed folder**: Contains processed images from the team
+1. [Google Cloud Console](https://console.cloud.google.com/) → Enable **Custom Search API** → create API key
+2. [Programmable Search Engine](https://programmablesearchengine.google.com/) → create engine → enable "Search the entire web" + "Image Search"
+3. Copy the Search Engine ID into config
 
-Update `secrets/config.json` with both folder IDs and your processor ID:
+---
 
-```json
-"google_drive": {
-  "raw_folder_id": "YOUR_RAW_FOLDER_ID",
-  "preprocessed_folder_id": "YOUR_PREPROCESSED_FOLDER_ID"
-},
-"preprocessing": {
-  "processor_id": "YourName"
-}
-```
+## Commands
 
-To get folder IDs: Open the folder in Google Drive and copy the ID from the URL.
+### `uv run images_collector`
 
-### 6. Run the Preprocessing Pipeline
-
-```bash
-# Run the pipeline
-uv run .\main.py
-```
-
-This will:
-
-1. Download raw images not yet processed
-2. Preprocess them locally
-3. Upload to shared Drive folder
-4. Download teammates' processed images
-
-## Available Tools
-
-### Core: Competitor Number Processing
-
-The main package for preprocessing competitor number images before detection/recognition:
-
-```python
-from competitor_number_processing.preprocess import preprocess_image, PreprocessConfig
-
-# Preprocess image for better competitor number detection
-config = PreprocessConfig(
-    max_long_edge=1280,      # Resize large images
-    autocontrast=True,       # Normalize illumination
-    median_filter_size=3,    # Noise reduction
-    sharpness=1.2           # Enhance details
-)
-
-processed_img = preprocess_image("sports_event_photo.jpg", config)
-processed_img.save("processed_event_photo.jpg")
-```
-
-**Features**:
-
-- Adaptive resizing (maintains aspect ratio)
-- Contrast and illumination normalization
-- Noise reduction filters
-- Sharpness enhancement
-- Configurable preprocessing pipeline
-- Grass-aware preprocessing for person detection
-
-#### Person Detection System
-
-The package includes a sophisticated person detection system specifically designed to work with sports event images, including challenging scenarios with grass backgrounds (HOG + SVM implementation per Spec 2.3).
-
-**Detection Algorithm:**
-
-The system uses a multi-stage detection approach combining classical computer vision techniques:
-
-1. **HOG + SVM Detection**
-   - Uses OpenCV's pre-trained Dalal-Triggs person detector
-   - HOG (Histogram of Oriented Gradients) extracts shape features
-   - SVM (Support Vector Machine) classifies detected regions
-   - Configuration: scale=1.03, min_size=(30,60), threshold=-1.0
-
-2. **Grass-Aware Preprocessing**
-   - Dynamically detects dominant grass color per image using HSV median
-   - Creates two preprocessing outputs:
-     - **Final version**: Standard preprocessing for OCR/number detection (uploaded to Drive)
-     - **Grass-enhanced version**: Enhanced contrast and edges for person detection (local only)
-   - Applies CLAHE (Contrast Limited Adaptive Histogram Equalization) to non-grass regions
-   - Edge enhancement and sharpening on grass areas
-
-3. **Enhanced Contour Detection**
-   - Detects color variations in grass to find people (different shades of green/clothing)
-   - Multi-channel variance analysis:
-     - Saturation difference > 30 from median
-     - Value (brightness) difference > 30 from median
-   - Dual-threshold Canny edge detection:
-     - Strong edges: 50/150 thresholds
-     - Weak edges: 20/60 thresholds (combined with strong)
-   - Structure validation: requires edge density > 2% within contour
-   - Minimum contour area: 1500 pixels
-   - Aspect ratio filtering for human-like shapes
-
-4. **Bounding Box Expansion**
-   - Expands detected boxes based on color similarity
-   - Uses flood fill to find connected regions of similar color
-   - Color similarity threshold: 25 (Euclidean distance in BGR space)
-   - Maximum expansion: 1.5x original box size (50% growth limit)
-   - Prevents over-aggressive merging of entire grass regions
-
-5. **Overlapping Box Merging**
-   - Merges nested and overlapping detections
-   - IoU (Intersection over Union) threshold: 0.5
-   - Also merges if one box is 70%+ contained in another
-   - Reduces duplicate detections and improves accuracy
-
-**Usage:**
-
-```python
-from competitor_number_processing.detector import PersonDetector, DetectionConfig
-
-# Configure detection
-config = DetectionConfig(
-    scale=1.03,              # Pyramid scale factor
-    min_neighbors=0,         # Minimum detections in group
-    min_size=(30, 60),       # Minimum person size (width, height)
-    threshold=-1.0,          # Detection threshold
-    min_contour_area=1500    # Minimum contour area for validation
-)
-
-# Detect people
-detector = PersonDetector(config)
-image = cv2.imread("sports_event.jpg")
-bounding_boxes = detector.detect(image)
-
-# Each bounding box: (x, y, width, height)
-for x, y, w, h in bounding_boxes:
-    cv2.rectangle(image, (x, y), (x+w, y+h), (0, 255, 0), 2)
-```
-
-**Pipeline Integration:**
-
-```bash
-# Full pipeline with preprocessing and detection
-uv run python main.py
-
-# Skip preprocessing step (use existing processed images)
-uv run python main.py --skip-preprocessing
-
-# Skip download step (use only local images)
-uv run python main.py --skip-download
-
-# Skip upload step (don't upload to Drive)
-uv run python main.py --skip-upload
-```
-
-The pipeline saves:
-- Detection visualizations to `cache/processed_local/detections/`
-- Grass-enhanced images to `cache/processed_local/grass_enhanced/`
-- Non-grass preprocessed images to Drive (for OCR/number detection)
-
-**Performance:**
-
-On typical sports event datasets with grass backgrounds, the system achieves robust detection with minimal false positives through the combination of HOG+SVM baseline, contour-based enhancement, and intelligent box merging.
-
-### Supporting Tools
-
-#### 1. Image Collector (GUI)
-
-Search and upload images to Google Drive with manual selection.
+PyQt6 GUI — search Google Images for sports event photos and upload selected ones to Drive's raw folder.
 
 ```bash
 uv run images_collector
 ```
 
-**Features:**
+### `uv run deduplicator`
 
-- Search for sports event/competitor number images using Google Custom Search API
-- Preview thumbnails and full-resolution images
-- Manual selection/rejection of training images
-- Automatic duplicate detection (URL & content hash)
-- Session persistence
-- Batch upload to Google Drive for training dataset
-
-#### 2. Image Deduplicator (CLI)
-
-Remove duplicate images from Google Drive.
+Remove duplicate images from Google Drive using MD5 checksums (no downloads needed).
 
 ```bash
-# Dry run - scan and report only (safe)
-uv run deduplicator
-
-# Delete with confirmation prompt
-uv run deduplicator --delete
-
-# Delete immediately (dangerous!)
-uv run deduplicator --delete-confirm
-
-# Show help
-uv run deduplicator --help
+uv run deduplicator                # dry run — report only
+uv run deduplicator --delete       # delete with confirmation
+uv run deduplicator --delete-confirm  # delete immediately
 ```
 
-**Features:**
+### `uv run preprocess`
 
-- MD5-based duplicate detection (no downloads needed)
-- Detailed duplicate reports with file sizes
-- Space savings calculation
-- Safe dry-run mode by default
-- Keeps oldest file in each duplicate group
-- Essential for maintaining clean training datasets
+Downloads raw images from Drive, preprocesses them (resize to 1280px, autocontrast, noise reduction), uploads to Drive's preprocessed folder, and auto-uploads to Roboflow. Syncs `tracking.json` to/from Drive so team members share state.
 
-## Typical Workflow
+```bash
+uv run preprocess
+```
 
-1. **Collect Training Images**
+After this step, go to [roboflow.com](https://roboflow.com) and annotate the uploaded images.
 
-   ```bash
-   uv run images_collector
-   ```
+### `uv run train`
 
-   Search for "marathon competitor number", "cycling race number", "triathlon bib", etc. Select quality images and upload to Drive.
+Downloads the annotated dataset from Roboflow, fine-tunes **YOLOv8n** for bib detection, then fine-tunes **EasyOCR**'s recognition model on labeled bib crops.
 
-2. **Remove Duplicates**
+```bash
+uv run train                        # full run: download + YOLO + OCR
+uv run train --skip-download        # skip dataset download, retrain on cached data
+uv run train --ocr-only             # skip YOLO, only fine-tune OCR
+uv run train --skip-ocr             # skip OCR fine-tuning, YOLO only
+uv run train --epochs 100 --batch 4 # custom YOLO hyperparameters
+uv run train --model yolov8s.pt     # larger base model
+```
 
-   ```bash
-   uv run deduplicator
-   ```
+**OCR ground truth** — after `uv run train` runs for the first time, a `cache/bib_crops/labels.csv` file is created with all detected bib crops and an empty `correct_number` column. Fill this in manually, then re-run `uv run train --ocr-only` to fine-tune the OCR model. The CSV is synced to Drive (via `bib_crops_drive_folder_id`) so team members share annotations.
 
-   Clean your training dataset by removing duplicate images.
+Output files:
+- `cache/runs/bib_yolov8n/weights/best.pt` — YOLO bib detector
+- `cache/runs/bib_ocr/ocr_finetuned.pth` — fine-tuned OCR model (auto-loaded at inference)
 
-3. **Download Images for Processing**
+### `uv run process <path>`
 
-   ```python
-   from drive_manager import DriveManager
+Runs the full inference pipeline: preprocess → detect bibs (YOLO) → read digits (EasyOCR).
 
-   manager = DriveManager(credentials_path, folder_id)
-   manager.download_all_from_folder(Path("training_images/"))
-   ```
+```bash
+uv run process race.jpg                          # single image
+uv run process photos/                           # directory of images
+uv run process race.jpg --output results/        # save annotated PNG
+uv run process race.jpg --conf 0.15              # lower detection threshold
+uv run process race.jpg --json                   # print JSON output
+uv run process race.jpg --hog                    # use classical HOG+SVM instead of YOLO
+```
 
-4. **Preprocess Images**
+Example output:
+```
+race.jpg: 1547, 203, (unread)
+```
 
-   ```python
-   from competitor_number_processing.preprocess import preprocess_image, PreprocessConfig
-   from pathlib import Path
+`--hog` uses the classical HOG+SVM person detector instead of YOLOv8 — useful for comparing approaches.
 
-   config = PreprocessConfig(
-       max_long_edge=1280,
-       autocontrast=True,
-       median_filter_size=3
-   )
+---
 
-   for img_path in Path("training_images/").glob("*.jpg"):
-       processed = preprocess_image(str(img_path), config)
-       processed.save(f"processed/{img_path.name}")
-   ```
+## Architecture
 
-5. **Competitor Number Detection** (Future implementation)
-   - OCR / Text detection
-   - Number recognition
-   - Participant tracking
+```
+Raw Image
+    │
+    ├─ preprocess (resize 1280px, autocontrast, CLAHE)
+    │
+    ├─ YOLOv8n bib detector  →  cache/runs/bib_yolov8n/weights/best.pt
+    │       detects class 0 (competitor) and class 1 (number bib)
+    │
+    ├─ EasyOCR (digits only, allowlist="0123456789")
+    │       auto-loads fine-tuned weights if cache/runs/bib_ocr/ocr_finetuned.pth exists
+    │
+    └─ result: bib regions + digit strings
+```
 
-## API Setup Guide
+**Detection modes** (`uv run process`):
+- Default: YOLOv8n directly detects bib number regions → OCR
+- `--hog`: HOG+SVM detects person regions → OCR on whole-person crops
 
-### Google Custom Search API
-
-1. Visit [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select existing
-3. Enable **Custom Search API**
-4. Go to **Credentials** → **Create Credentials** → **API Key**
-5. Create a Custom Search Engine at [Programmable Search Engine](https://programmablesearchengine.google.com/)
-6. Enable "Image Search" and "Search the entire web"
-7. Copy the **Search Engine ID**
-
-### Google Drive API (OAuth 2.0)
-
-1. In the same Google Cloud project, enable **Google Drive API**
-2. Go to **APIs & Services** → **Credentials**
-3. Click **Create Credentials** → **OAuth Client ID**
-4. Choose **Desktop app** as application type
-5. Download the JSON file
-6. Save it as `secrets/client_secret.json`
-7. Configure **OAuth consent screen**:
-   - Add your email to "Test Users" if in Testing mode
-   - Scopes needed: `https://www.googleapis.com/auth/drive`
-
-**First Run**: When you run a tool that uses Google Drive, a browser will open for authentication. Grant permissions and the token will be saved automatically.
+---
 
 ## Project Structure
 
 ```
-analiza_danych_multimedialnych/
-├── pyproject.toml              # Main project config with all dependencies
-├── README.md                   # This file
-├── tracking.json               # Image tracking database
+├── main.py                              # All CLI entry points
+├── pyproject.toml
 ├── secrets/
-│   ├── config.json            # Your configuration (not committed)
-│   ├── config.example.json    # Configuration template
-│   ├── client_secret.json     # Google OAuth credentials (not committed)
-│   └── token.json             # OAuth token (auto-generated, not committed)
-├── cache/                      # Downloaded images cache
-│   └── downloads/             # Downloaded images from Drive
-├── competitor_number_processing/  # Main package
-│   ├── __init__.py
-│   └── preprocess.py
-└── tools/                      # Modular tools
-    ├── images_collector/       # PyQt6 GUI application
-    │   ├── pyproject.toml
-    │   └── images_collector/
-    │       ├── __init__.py
-    │       ├── main.py         # GUI entry point
-    │       └── gui.py          # Main application window
-    ├── drive_manager/          # Google Drive management
-    │   ├── pyproject.toml
-    │   └── drive_manager/
-    │       ├── __init__.py
-    │       └── manager.py      # DriveManager class
-    ├── images_deduplicator/    # Duplicate removal tool
-    │   ├── pyproject.toml
-    │   ├── README.md
-    │   └── images_deduplicator/
-    │       ├── __init__.py
-    │       ├── deduplicator.py # Core deduplication logic
-    │       └── cli.py          # CLI entry point
-    └── image_search/           # Search & tracking
-        ├── pyproject.toml
-        └── image_search/
-            ├── __init__.py
-            ├── searcher.py     # Google Search integration
-            └── tracker.py      # Image tracking system
+│   ├── config.json                      # Local config (not committed)
+│   ├── config.example.json
+│   └── client_secret.json               # Google OAuth (not committed)
+├── cache/                               # Git-ignored, auto-generated
+│   ├── raw/                             # Downloaded raw images
+│   ├── bib_crops/                       # Extracted bib crops + labels.csv
+│   ├── roboflow_datasets/               # Downloaded Roboflow datasets
+│   └── runs/
+│       ├── bib_yolov8n/                 # YOLO training output & weights
+│       └── bib_ocr/                     # Fine-tuned OCR weights
+├── pipeline/
+│   ├── dataset_preparation.py           # preprocess pipeline orchestration
+│   └── config.py
+├── competitor_number_processing/
+│   ├── preprocess.py                    # image preprocessing
+│   ├── detector.py                      # HOG+SVM person detector (classical)
+│   ├── cnn_detector.py                  # YOLOv8n bib detector
+│   ├── ocr.py                           # EasyOCR wrapper (auto-loads fine-tuned weights)
+│   ├── ocr_training.py                  # EasyOCR fine-tuning on bib crops
+│   ├── training.py                      # YOLO training + bib crop extraction
+│   ├── inference.py                     # inference pipeline (process command)
+│   └── tracking.py                      # pipeline state tracker
+└── tools/
+    ├── images_collector/                # PyQt6 GUI
+    ├── drive_manager/                   # Google Drive API wrapper
+    ├── images_deduplicator/             # MD5-based deduplication
+    └── roboflow_manager/                # Roboflow API client
 ```
 
-## Available Scripts
-
-Registered in `pyproject.toml`:
-
-```bash
-# Image collector GUI
-uv run images_collector
-
-# Image deduplicator CLI
-uv run deduplicator [--delete|--delete-confirm|--help]
-```
-
-## Tools Documentation
-
-### Drive Manager
-
-Bidirectional file management for Google Drive:
-
-```python
-from drive_manager import DriveManager
-
-manager = DriveManager(credentials_path, folder_id)
-
-# Upload
-file_id = manager.upload_file(Path("image.jpg"))
-
-# List files
-files = manager.list_files_in_folder()
-
-# Download (with hash verification)
-manager.download_file(file_id, Path("local/image.jpg"), check_hash=True)
-
-# Download all
-manager.download_all_from_folder(Path("downloads/"))
-
-# Delete
-manager.delete_file(file_id)
-manager.delete_files([id1, id2, id3])
-```
-
-### Image Deduplicator
-
-Programmatic usage:
-
-```python
-from images_deduplicator import ImageDeduplicator
-from drive_manager import DriveManager
-
-manager = DriveManager(credentials_path, folder_id)
-deduplicator = ImageDeduplicator(manager, dry_run=True)
-
-# Find duplicates
-duplicates = deduplicator.find_duplicates()
-
-# Show report
-deduplicator.show_duplicates_report(limit=10)
-
-# Get statistics
-stats = deduplicator.get_statistics()
-print(f"Space wasted: {stats['space_wasted_mb']:.2f} MB")
-
-# Delete (when dry_run=False)
-successful, failed = deduplicator.delete_duplicates(
-    confirm=True,
-    keep_strategy="oldest"
-)
-```
-
-## Duplicate Detection & Prevention
-
-The system uses multiple strategies to prevent and remove duplicates from training datasets:
-
-### During Collection (images_collector)
-
-- **URL hash**: Prevents re-downloading from same URL
-- **File hash (SHA-256)**: Detects identical content from different sources
-- **Tracking database**: Stores all metadata in `tracking.json`
-
-### On Google Drive (images_deduplicator)
-
-- **MD5 hash**: Uses Google Drive's built-in checksums
-- **No downloads needed**: Analyzes metadata only
-- **Smart keeping**: Preserves oldest file by modification time
-
-This ensures your training dataset contains only unique, high-quality competitor number images from various sports events.
-
-## Development
-
-### Adding a New Tool
-
-1. Create directory in `tools/your_tool/`
-2. Add `pyproject.toml` with dependencies
-3. Create package `tools/your_tool/your_tool/`
-4. Add to main `pyproject.toml`:
-
-   ```toml
-   dependencies = ["your_tool"]
-
-   [tool.uv.sources]
-   your_tool = { path = "./tools/your_tool", editable = true }
-   ```
-
-5. Run `uv sync`
+---
 
 ## Troubleshooting
 
-### "Module not found" errors
+| Problem | Fix |
+|---------|-----|
+| No bibs detected | Lower `--conf 0.10`; if still nothing, retrain with more data |
+| OOM during YOLO training | Use `--batch 4` |
+| mAP50 < 0.60 | Try `--model yolov8s.pt --epochs 120` |
+| OCR reads nothing | Bib crop too small — lower `--conf` to get larger boxes |
+| OAuth error | Delete `secrets/token.json` and re-authenticate |
+| `Module not found` | Run `uv sync` |
 
-```bash
-# Re-sync dependencies
-uv sync
+---
 
-# Check installed packages
-uv pip list
-```
-
-### OAuth errors / Permission denied
-
-```bash
-# Delete old token (scope changed)
-rm secrets/token.json
-
-# Re-authenticate on next run
-```
-
-### Pylance import errors in VS Code
-
-The project includes `.vscode/settings.json` with proper paths. If imports still show errors:
-
-1. Reload VS Code window
-2. Check Python interpreter is using the UV virtual environment
-3. Run `uv sync` to ensure all packages are installed
-
-## License
-
-Educational project for WSB University
+Educational project — WSB University

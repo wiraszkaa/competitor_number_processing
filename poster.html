@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Numery startowe: klasyczne CV vs CNN</title>
+<style>
+/* ============================================================
+   RESET
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ============================================================
+   BODY
+   ============================================================ */
+html {
+  overflow: auto;
+}
+body {
+  background: #0b1020;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 24px;
+  min-height: 100vh;
+  min-width: max-content;
+  color: #e5e7eb;
+}
+
+/* ============================================================
+   POSTER (A0: 841 × 1189 mm)
+   ============================================================ */
+.poster {
+  width: 841mm;
+  height: 1189mm;
+  background: #111827;
+  padding: 15mm;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: auto 1fr auto;
+  gap: 10mm;
+}
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+.poster-header {
+  grid-column: 1 / 4;
+  background: linear-gradient(135deg, #0c2340 0%, #111827 50%, #0d1f2d 100%);
+  border-radius: 14px;
+  padding: 12mm 14mm;
+  text-align: center;
+  border: 2px solid rgba(34, 211, 238, 0.35);
+  box-shadow: 0 0 60px rgba(34, 211, 238, 0.06), 0 8px 40px rgba(0,0,0,0.6);
+  position: relative;
+  overflow: hidden;
+}
+.poster-header::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 5px;
+  background: linear-gradient(90deg, #22d3ee 0%, #818cf8 50%, #fb923c 100%);
+}
+.poster-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0; height: 5px;
+  background: linear-gradient(90deg, #22d3ee 0%, #818cf8 50%, #fb923c 100%);
+}
+.poster-header h1 {
+  font-size: 72px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  line-height: 1.15;
+  color: #fff;
+  margin-bottom: 14px;
+}
+.poster-header h1 .ac { color: #22d3ee; }
+.poster-header h1 .ao { color: #fb923c; }
+.poster-header .subtitle {
+  font-size: 28px;
+  color: #94a3b8;
+  font-style: italic;
+}
+.header-legend {
+  display: flex;
+  justify-content: center;
+  gap: 40px;
+  margin-top: 18px;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 20px;
+  color: #cbd5e1;
+  font-weight: 600;
+}
+.legend-dot {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+}
+.ld-cyan { background: #22d3ee; }
+.ld-orange { background: #fb923c; }
+.ld-purple { background: #818cf8; }
+
+/* ============================================================
+   COLUMN WRAPPERS
+   ============================================================ */
+.col {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10mm;
+}
+.col .box {
+  flex: 1;
+}
+.col .box:last-child {
+  justify-content: center;
+}
+
+/* ============================================================
+   BOX (card)
+   ============================================================ */
+.box {
+  background: #1e293b;
+  border-radius: 12px;
+  padding: 10mm;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.45), 0 1px 4px rgba(0,0,0,0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 7mm;
+}
+.box-cyan   { border-top: 5px solid #22d3ee; }
+.box-orange { border-top: 5px solid #fb923c; }
+.box-purple { border-top: 5px solid #818cf8; }
+
+.box-label {
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  color: #475569;
+  font-weight: 700;
+}
+.box h2 {
+  font-size: 34px;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1.2;
+}
+.box h2.cyan   { color: #22d3ee; }
+.box h2.orange { color: #fb923c; }
+.box h2.purple { color: #818cf8; }
+
+.box p {
+  font-size: 22px;
+  line-height: 1.7;
+  color: #cbd5e1;
+}
+.box ul {
+  list-style: disc;
+  padding-left: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.box ul li {
+  font-size: 20px;
+  line-height: 1.6;
+  color: #cbd5e1;
+}
+
+/* ============================================================
+   IMAGE GRID
+   ============================================================ */
+.img-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.img-frame {
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #334155;
+  display: flex;
+  flex-direction: column;
+}
+.img-frame img {
+  width: 100%;
+  height: 260px;
+  object-fit: cover;
+  object-position: center top;
+  display: block;
+}
+.img-caption {
+  background: #0f172a;
+  color: #64748b;
+  font-size: 17px;
+  padding: 10px 14px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+/* ============================================================
+   PIPELINE (vertical)
+   ============================================================ */
+.pipeline {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.pip-step {
+  background: #0f172a;
+  border: 1px solid #2d3f55;
+  border-radius: 8px;
+  padding: 14px 20px;
+}
+.pip-step.s-cyan   { border-color: rgba(34,211,238,0.4); }
+.pip-step.s-orange { border-color: rgba(251,146,60,0.4); }
+.pip-step.s-purple { border-color: rgba(129,140,248,0.4); }
+.pip-step.s-result-cyan   { border-color: #22d3ee; background: #071f2e; }
+.pip-step.s-result-orange { border-color: #fb923c; background: #1f1002; }
+.pip-step.s-result-purple { border-color: #818cf8; background: #0d0f2e; }
+
+.pip-label {
+  font-size: 20px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+.pip-label.cyan   { color: #22d3ee; }
+.pip-label.orange { color: #fb923c; }
+.pip-label.purple { color: #818cf8; }
+
+.pip-desc {
+  font-size: 16px;
+  color: #64748b;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+.pip-arrow {
+  text-align: center;
+  padding: 4px 0;
+  font-size: 26px;
+  color: #475569;
+  line-height: 1;
+}
+.pip-arrow.cyan   { color: #22d3ee; }
+.pip-arrow.orange { color: #fb923c; }
+.pip-arrow.purple { color: #818cf8; }
+
+/* ============================================================
+   METRIC CARDS (horizontal bar charts)
+   ============================================================ */
+.metric-card {
+  background: #0f172a;
+  border-radius: 8px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border: 1px solid #1e3a5f;
+}
+.metric-card h3 {
+  font-size: 19px;
+  font-weight: 700;
+  color: #e2e8f0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #1e293b;
+}
+.hbars { display: flex; flex-direction: column; gap: 12px; }
+.hbar-row { display: flex; flex-direction: column; gap: 6px; }
+.hbar-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 18px;
+  color: #94a3b8;
+}
+.hbar-meta .hval { font-weight: 700; color: #e2e8f0; }
+.hbar-bg {
+  background: #1e293b;
+  border-radius: 4px;
+  height: 24px;
+  overflow: hidden;
+}
+.hbar-fill { height: 100%; border-radius: 4px; }
+.fc1 { background: #22d3ee; }
+.fc2 { background: #0891b2; }
+.fc3 { background: #0e7490; }
+
+/* ============================================================
+   VERTICAL BAR CHARTS
+   ============================================================ */
+.vchart-wrap { display: flex; flex-direction: column; gap: 10px; }
+.vchart-area {
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  height: 270px;
+  border-bottom: 2px solid #334155;
+}
+.vbc {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.vbv {
+  font-size: 22px;
+  font-weight: 800;
+  color: #fff;
+}
+.vb {
+  width: 72%;
+  border-radius: 5px 5px 0 0;
+}
+.vchart-labels {
+  display: flex;
+  gap: 18px;
+}
+.vchart-labels span {
+  flex: 1;
+  text-align: center;
+  font-size: 18px;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+/* ============================================================
+   TECH GRID
+   ============================================================ */
+.tech-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.tech-tag {
+  background: #0f172a;
+  border: 1px solid #1e3a5f;
+  border-radius: 6px;
+  padding: 11px 14px;
+  font-size: 18px;
+  color: #7dd3fc;
+  text-align: center;
+  font-weight: 600;
+}
+
+/* ============================================================
+   CITATIONS
+   ============================================================ */
+.cite-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  background: rgba(251,146,60,0.08);
+  border: 1px solid rgba(251,146,60,0.28);
+  border-radius: 5px;
+  padding: 6px 14px;
+  font-size: 16px;
+  color: #fdba74;
+  font-style: italic;
+  line-height: 1.4;
+}
+.cite-badge .cnum {
+  font-style: normal;
+  font-weight: 900;
+  color: #fb923c;
+  margin-right: 1px;
+}
+.ref-list {
+  background: #0a111f;
+  border: 1px solid #1e3a5f;
+  border-radius: 8px;
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.ref-list-title {
+  font-size: 19px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #475569;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.ref-item {
+  display: flex;
+  gap: 14px;
+  font-size: 21px;
+  color: #94a3b8;
+  line-height: 1.6;
+}
+.ref-item .rnum {
+  color: #fb923c;
+  font-weight: 900;
+  flex-shrink: 0;
+  min-width: 26px;
+}
+.ref-item.classical .rnum { color: #22d3ee; }
+.ref-item.classical { color: #64748b; }
+.ref-divider {
+  height: 1px;
+  background: #1e293b;
+  margin: 2px 0;
+}
+
+/* ============================================================
+   SPECIAL BOXES
+   ============================================================ */
+.alert-box {
+  background: #2d0808;
+  border: 1px solid #dc2626;
+  border-radius: 8px;
+  padding: 20px;
+  font-size: 20px;
+  color: #fca5a5;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.5;
+}
+.note-box {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 13px 18px;
+  font-size: 17px;
+  color: #64748b;
+  font-style: italic;
+  text-align: center;
+  line-height: 1.5;
+}
+.warn-box {
+  background: #1c0e00;
+  border: 1px solid #92400e;
+  border-radius: 6px;
+  padding: 13px 18px;
+  font-size: 17px;
+  color: #d97706;
+  line-height: 1.5;
+}
+
+/* ============================================================
+   SECTION LABEL (column header)
+   ============================================================ */
+.col-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2.5px;
+  margin-bottom: -3mm;
+}
+.col-header-cyan   { background: rgba(34,211,238,0.08); color: #22d3ee; border: 1px solid rgba(34,211,238,0.2); }
+.col-header-purple { background: rgba(129,140,248,0.08); color: #818cf8; border: 1px solid rgba(129,140,248,0.2); }
+.col-header-orange { background: rgba(251,146,60,0.08);  color: #fb923c; border: 1px solid rgba(251,146,60,0.2); }
+
+/* ============================================================
+   FOOTER (Wnioski)
+   ============================================================ */
+.poster-footer {
+  grid-column: 1 / 4;
+  background: linear-gradient(135deg, #0c1f30 0%, #111827 100%);
+  border-radius: 12px;
+  padding: 10mm 12mm;
+  border: 1px solid rgba(251,146,60,0.25);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+  position: relative;
+  overflow: hidden;
+}
+.poster-footer::before {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0; height: 5px;
+  background: linear-gradient(90deg, #22d3ee 0%, #818cf8 50%, #fb923c 100%);
+}
+.poster-footer h2 {
+  font-size: 40px;
+  font-weight: 900;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 20px;
+}
+.footer-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 50px;
+}
+.footer-item {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.footer-bullet {
+  color: #22d3ee;
+  font-size: 24px;
+  margin-top: 2px;
+  flex-shrink: 0;
+  font-weight: 900;
+}
+.footer-item p {
+  font-size: 16px;
+  line-height: 1.65;
+  color: #cbd5e1;
+  margin: 0;
+}
+
+/* ============================================================
+   PRINT / A0
+   ============================================================ */
+@page { size: A0 portrait; margin: 0; }
+@media print {
+  body { background: none; padding: 0; }
+  .poster { box-shadow: none; }
+}
+</style>
+</head>
+<body>
+<div class="poster">
+
+  <!-- ========================================================
+       HEADER
+       ======================================================== -->
+  <header class="poster-header">
+    <h1>Numery startowe:&nbsp;<span class="ac">Klasyczne CV</span>&nbsp;vs&nbsp;<span class="ao">CNN</span></h1>
+    <p class="subtitle">Nasze eksperymenty z HOG+SVM / MSER i przegląd wyników CNN z literatury</p>
+    <p style="font-size:22px;color:#64748b;margin-bottom:10px;letter-spacing:0.5px;">Jakub Wiraszka &nbsp;·&nbsp; Marcel Żukowski</p>
+    <div class="header-legend">
+      <div class="legend-item"><div class="legend-dot ld-cyan"></div>Metody klasyczne (nasz projekt)</div>
+      <div class="legend-item"><div class="legend-dot ld-purple"></div>Infrastruktura i dane</div>
+      <div class="legend-item"><div class="legend-dot ld-orange"></div>CNN – literatura i plany</div>
+    </div>
+  </header>
+
+  <!-- ========================================================
+       LEWA KOLUMNA
+       ======================================================== -->
+  <div class="col">
+    <div class="col-header col-header-cyan">Metody klasyczne – nasz projekt</div>
+
+    <!-- Box 1: Problem i dane -->
+    <div class="box box-cyan">
+      <span class="box-label">Kontekst zadania</span>
+      <h2 class="cyan">Problem i dane</h2>
+      <p>
+        System do automatycznego rozpoznawania numerów startowych na zdjęciach z zawodów sportowych
+        (biegi uliczne, triathlony). Zadanie obejmuje lokalizację numeru na stroju zawodnika oraz
+        odczyt jego wartości w trudnych, rzeczywistych warunkach zdjęciowych.
+      </p>
+      <ul>
+        <li>Ruch zawodnika i <strong>motion blur</strong> – cyfry rozmyte podczas dynamicznych ujęć</li>
+        <li>Zmienne oświetlenie – bezpośrednie słońce, głęboki cień, sztuczne oświetlenie obiektów krytych</li>
+        <li>Złożone tła: trawa, tłum kibiców, elementy infrastruktury trasy</li>
+        <li>Zróżnicowane rozmiary numerów w zależności od odległości zawodnika od kamery</li>
+        <li>Różne formaty, czcionki i kolorystyki numerów stosowane przez różnych organizatorów</li>
+      </ul>
+      <div class="img-grid">
+        <div class="img-frame">
+          <img src="cache/preprocessed/1094695998__final.png" alt="Zawodnik nr 10 – widoczny numer na koszulce">
+          <div class="img-caption">Zawodnik nr&nbsp;10 – numer wyraźnie widoczny</div>
+        </div>
+        <div class="img-frame">
+          <img src="cache/preprocessed/1159174651__final.png" alt="Zawodnik nr 8 – numer w trudnych warunkach oświetleniowych">
+          <div class="img-caption">Zawodnik nr&nbsp;8 – zróżnicowane oświetlenie</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Box 2: Pipeline klasyczny -->
+    <div class="box box-cyan">
+      <h2 class="cyan">Pipeline klasyczny&nbsp;<span style="font-size:15px;font-weight:400;color:#64748b;">(nasza implementacja)</span></h2>
+      <div class="pipeline">
+        <div class="pip-step s-cyan">
+          <div class="pip-label">Zdjęcie wejściowe</div>
+          <div class="pip-desc">Surowe zdjęcie z zawodów; różne rozdzielczości i warunki</div>
+        </div>
+        <div class="pip-arrow cyan">&#8595;</div>
+        <div class="pip-step s-cyan">
+          <div class="pip-label">Preprocessing</div>
+          <div class="pip-desc">Grass-aware normalizacja, odszumianie, zmiana skali</div>
+        </div>
+        <div class="pip-arrow cyan">&#8595;</div>
+        <div class="pip-step s-cyan">
+          <div class="pip-label">HOG + SVM – detekcja osób</div>
+          <div class="pip-desc">Lokalizacja zawodników w kadrze; Precision &#8776; 0,25 | Recall &#8776; 0,30</div>
+        </div>
+        <div class="pip-arrow cyan">&#8595;</div>
+        <div class="pip-step s-cyan">
+          <div class="pip-label">MSER – regiony cyfr</div>
+          <div class="pip-desc">Wykrywanie kandydatów na regiony numerów startowych (15–30 FP / obraz)</div>
+        </div>
+        <div class="pip-arrow cyan">&#8595;</div>
+        <div class="pip-step s-cyan">
+          <div class="pip-label">HOG + SVM – klasyfikacja cyfr</div>
+          <div class="pip-desc">Odczyt cyfr z wykrytych regionów; acc &#8776; 0,92 (MNIST) / 0,40 (realne)</div>
+        </div>
+        <div class="pip-arrow cyan">&#8595;</div>
+        <div class="pip-step s-result-cyan">
+          <div class="pip-label cyan">Numer startowy (wynik)</div>
+          <div class="pip-desc">Odczytana wartość numeru startowego zawodnika</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Box 3: Wyniki -->
+    <div class="box box-cyan">
+      <h2 class="cyan">Wyniki klasycznych metod&nbsp;<span style="font-size:15px;font-weight:400;color:#64748b;">(nasz eksperyment)</span></h2>
+
+      <!-- Metric 1 -->
+      <div class="metric-card">
+        <h3>Detekcja osób – HOG+SVM</h3>
+        <div class="hbars">
+          <div class="hbar-row">
+            <div class="hbar-meta"><span>Precision</span><span class="hval">&#8776; 0,25</span></div>
+            <div class="hbar-bg"><div class="hbar-fill fc1" style="width:25%;"></div></div>
+          </div>
+          <div class="hbar-row">
+            <div class="hbar-meta"><span>Recall</span><span class="hval">&#8776; 0,30</span></div>
+            <div class="hbar-bg"><div class="hbar-fill fc2" style="width:30%;"></div></div>
+          </div>
+        </div>
+        <div class="warn-box">Niskie wyniki: tłum, okluzy, motion blur w trudnych warunkach terenowych</div>
+      </div>
+
+      <!-- Metric 2 -->
+      <div class="metric-card">
+        <h3>Regiony numerów – MSER</h3>
+        <div class="hbars">
+          <div class="hbar-row">
+            <div class="hbar-meta"><span>Recall</span><span class="hval">&#8776; 0,20</span></div>
+            <div class="hbar-bg"><div class="hbar-fill fc2" style="width:20%;"></div></div>
+          </div>
+        </div>
+        <div class="warn-box">15–30 fałszywych regionów na obraz (trawa, tekstury odzieży, napisy reklamowe)</div>
+      </div>
+
+      <!-- Metric 3 -->
+      <div class="metric-card">
+        <h3>Klasyfikacja cyfr – HOG+SVM</h3>
+        <div class="hbars">
+          <div class="hbar-row">
+            <div class="hbar-meta"><span>Dokładność – MNIST</span><span class="hval">&#8776; 0,92</span></div>
+            <div class="hbar-bg"><div class="hbar-fill fc1" style="width:92%;"></div></div>
+          </div>
+          <div class="hbar-row">
+            <div class="hbar-meta"><span>Dokładność – realne cyfry</span><span class="hval">&#8776; 0,40</span></div>
+            <div class="hbar-bg"><div class="hbar-fill fc3" style="width:40%;"></div></div>
+          </div>
+        </div>
+        <div class="warn-box">Spadek o 52 pp przy przejściu z MNIST na realne warunki (domain gap)</div>
+      </div>
+    </div>
+
+    <!-- Box 4: Literatura cytowana -->
+    <div class="box box-cyan">
+      <span class="box-label">Przegląd źródeł</span>
+      <h2 class="cyan">Literatura cytowana</h2>
+      <div class="ref-list">
+        <div class="ref-list-title">Prace CNN – wyniki porównawcze</div>
+        <div class="ref-item">
+          <span class="rnum">[1]</span>
+          <span>Gerke et al., <em>Soccer Jersey Number Recognition Using Convolutional Neural Networks</em>, CVPR Workshops, 2015.</span>
+        </div>
+        <div class="ref-item">
+          <span class="rnum">[2]</span>
+          <span><em>Racing Bib Number Recognition Using Deep Learning</em>. Recall 0,93 / Precision 0,95 / F1 0,94.</span>
+        </div>
+        <div class="ref-item">
+          <span class="rnum">[3]</span>
+          <span><em>Jersey Number Detection Using Synthetic Data in a Low-Data Regime</em>, CVPR Workshops. Acc. 0,80→0,89 (+9&nbsp;pp, +18&nbsp;pp dla rzadkich).</span>
+        </div>
+        <div class="ref-divider"></div>
+        <div class="ref-list-title" style="color:#22d3ee66;">Tło klasyczne</div>
+        <div class="ref-item classical">
+          <span class="rnum">[4]</span>
+          <span>Shivakumara et al., <em>A New Method for Multi-oriented Moving Text Detection in Video</em>, IEEE Trans. CSVT, 2017.</span>
+        </div>
+        <div class="ref-item classical">
+          <span class="rnum">[5]</span>
+          <span>Roy et al., <em>Automatic Jersey Number Recognition from Broadcast Soccer Videos</em>, Signal Proc. Letters, 2015.</span>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /col-left -->
+
+  <!-- ========================================================
+       ŚRODKOWA KOLUMNA
+       ======================================================== -->
+  <div class="col">
+    <div class="col-header col-header-purple">Infrastruktura i planowany etap CNN</div>
+
+    <!-- Box 1: Infrastruktura -->
+    <div class="box box-purple">
+      <span class="box-label">Nasz projekt – pipeline danych</span>
+      <h2 class="purple">Infrastruktura i narzędzia</h2>
+      <div class="pipeline">
+        <div class="pip-step s-purple">
+          <div class="pip-label">ImagesCollector (Google Images)</div>
+          <div class="pip-desc">Automatyczne pobieranie zdjęć z zawodów sportowych wg zapytań</div>
+        </div>
+        <div class="pip-arrow purple">&#8595;</div>
+        <div class="pip-step s-purple">
+          <div class="pip-label">Google Drive – folder raw</div>
+          <div class="pip-desc">Surowe zdjęcia; wersjonowanie, deduplikacja, synchronizacja</div>
+        </div>
+        <div class="pip-arrow purple">&#8595;</div>
+        <div class="pip-step s-purple">
+          <div class="pip-label">Preprocessing</div>
+          <div class="pip-desc">Grass-aware filtrowanie tła, normalizacja kontrastu, odszumianie Gaussa</div>
+        </div>
+        <div class="pip-arrow purple">&#8595;</div>
+        <div class="pip-step s-purple">
+          <div class="pip-label">Google Drive – folder preprocessed</div>
+          <div class="pip-desc">Przetworzone zdjęcia gotowe do manualnej anotacji</div>
+        </div>
+        <div class="pip-arrow purple">&#8595;</div>
+        <div class="pip-step s-purple">
+          <div class="pip-label">Roboflow – anotacje YOLO</div>
+          <div class="pip-desc">Ręczne anotowanie bbox numerów, augmentacja, podział train / val / test</div>
+        </div>
+        <div class="pip-arrow purple">&#8595;</div>
+        <div class="pip-step s-result-purple">
+          <div class="pip-label purple">Zbiór YOLO (train / val / test)</div>
+          <div class="pip-desc">Gotowy dataset do trenowania detektora obiektów</div>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin-bottom:9px;">Użyte technologie</div>
+        <div class="tech-grid">
+          <div class="tech-tag">OpenCV</div>
+          <div class="tech-tag">scikit-learn</div>
+          <div class="tech-tag">Google Drive API</div>
+          <div class="tech-tag">Roboflow</div>
+          <div class="tech-tag">YOLO format</div>
+          <div class="tech-tag">UV (Python)</div>
+          <div class="tech-tag">Pillow / NumPy</div>
+          <div class="tech-tag">Matplotlib</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Box 2: Planowany CNN -->
+    <div class="box box-orange">
+      <span class="box-label">Przyszłe prace</span>
+      <h2 class="orange">Planowany etap CNN</h2>
+      <div class="pipeline">
+        <div class="pip-step s-orange">
+          <div class="pip-label">Dataset YOLO z Roboflow</div>
+          <div class="pip-desc">Nasz zanotowany zbiór – podstawa do fine-tuningu detektora</div>
+        </div>
+        <div class="pip-arrow orange">&#8595;</div>
+        <div class="pip-step s-orange">
+          <div class="pip-label">YOLOv8 – detektor numerów startowych</div>
+          <div class="pip-desc">Fine-tuning na naszym zbiorze; lokalizacja regionu numeru na zdjęciu</div>
+        </div>
+        <div class="pip-arrow orange">&#8595;</div>
+        <div class="pip-step s-result-orange">
+          <div class="pip-label orange">CNN – rozpoznawanie cyfr / numeru</div>
+          <div class="pip-desc">Odczyt wartości z wykrytego regionu; docelowo pipeline end-to-end</div>
+        </div>
+      </div>
+      <div class="alert-box">
+        W trakcie prac – brak naszych wyników CNN<br>
+        <span style="font-weight:400;font-size:13px;color:#f87171;">(tylko planowany etap, jeszcze niezrealizowany)</span>
+      </div>
+      <p style="font-size:14px;color:#94a3b8;line-height:1.6;">
+        Po wytrenowaniu planujemy pełne porównanie: wyniki CNN vs. wyniki klasycznego
+        pipeline'u HOG+SVM/MSER oraz zestawienie z benchmarkami z literatury.
+      </p>
+    </div>
+
+    <!-- Box 3: Planowane eksperymenty -->
+    <div class="box box-purple">
+      <span class="box-label">Przyszłe prace – szczegóły</span>
+      <h2 class="purple">Planowane eksperymenty i ewaluacja</h2>
+      <p>
+        Po implementacji detektora YOLOv8 planujemy serię eksperymentów porównawczych
+        na naszym własnym zbiorze zdjęć z zawodów sportowych – tym samym, na którym
+        testowaliśmy pipeline klasyczny HOG+SVM/MSER.
+      </p>
+      <ul>
+        <li>Trening YOLOv8 na datasecie z Roboflow i ewaluacja detekcji regionów numerów startowych</li>
+        <li>Bezpośrednie porównanie YOLO vs HOG+SVM na tych samych testowych zdjęciach</li>
+        <li>Analiza wpływu augmentacji (rotacja, blur, zmiana jasności) na metryki modelu CNN</li>
+        <li>Testowanie transferu wiedzy: model pre-trenowany na COCO vs trenowany od zera</li>
+        <li>Ewaluacja pipeline'u end-to-end: od surowego zdjęcia do odczytanego numeru startowego</li>
+        <li>Porównanie czasu inferencji klasycznych metod i CNN w warunkach zbliżonych do rzeczywistych</li>
+      </ul>
+
+      <div style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin-top:4px;margin-bottom:8px;">Planowane metryki ewaluacji</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+        <div style="background:#0f172a;border:1px solid rgba(129,140,248,0.3);border-radius:8px;padding:10px;text-align:center;">
+          <div style="font-size:18px;font-weight:900;color:#818cf8;">P / R</div>
+          <div style="font-size:11px;color:#64748b;margin-top:3px;">Precision<br>Recall</div>
+        </div>
+        <div style="background:#0f172a;border:1px solid rgba(129,140,248,0.3);border-radius:8px;padding:10px;text-align:center;">
+          <div style="font-size:18px;font-weight:900;color:#818cf8;">F1</div>
+          <div style="font-size:11px;color:#64748b;margin-top:3px;">F1-score<br>harmoniczna</div>
+        </div>
+        <div style="background:#0f172a;border:1px solid rgba(129,140,248,0.3);border-radius:8px;padding:10px;text-align:center;">
+          <div style="font-size:18px;font-weight:900;color:#818cf8;">mAP</div>
+          <div style="font-size:11px;color:#64748b;margin-top:3px;">mAP@50<br>detekcja</div>
+        </div>
+        <div style="background:#0f172a;border:1px solid rgba(129,140,248,0.3);border-radius:8px;padding:10px;text-align:center;">
+          <div style="font-size:18px;font-weight:900;color:#818cf8;">Acc</div>
+          <div style="font-size:11px;color:#64748b;margin-top:3px;">Accuracy<br>end-to-end</div>
+        </div>
+        <div style="background:#0f172a;border:1px solid rgba(129,140,248,0.3);border-radius:8px;padding:10px;text-align:center;">
+          <div style="font-size:18px;font-weight:900;color:#818cf8;">ms</div>
+          <div style="font-size:11px;color:#64748b;margin-top:3px;">Czas<br>inferencji</div>
+        </div>
+        <div style="background:#0f172a;border:1px solid rgba(129,140,248,0.3);border-radius:8px;padding:10px;text-align:center;">
+          <div style="font-size:18px;font-weight:900;color:#818cf8;">FP</div>
+          <div style="font-size:11px;color:#64748b;margin-top:3px;">False<br>Positives</div>
+        </div>
+      </div>
+
+      <div style="background:#0d1337;border:1px solid rgba(129,140,248,0.25);border-radius:8px;padding:14px;margin-top:4px;">
+        <div style="font-size:13px;color:#a5b4fc;font-weight:700;margin-bottom:8px;">Oczekiwany wynik na podstawie literatury</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <div style="display:flex;justify-content:space-between;font-size:13px;">
+            <span style="color:#94a3b8;">HOG+SVM (nasz baseline)</span>
+            <span style="color:#22d3ee;font-weight:700;">P&#8776;0,25 / R&#8776;0,30</span>
+          </div>
+          <div style="height:1px;background:#1e293b;"></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;">
+            <span style="color:#94a3b8;">YOLOv8 (cel minimalny)</span>
+            <span style="color:#818cf8;font-weight:700;">mAP&#8805;0,70</span>
+          </div>
+          <div style="height:1px;background:#1e293b;"></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;">
+            <span style="color:#94a3b8;">CNN end-to-end (cel docelowy)</span>
+            <span style="color:#fb923c;font-weight:700;">Acc&#8805;0,80</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /col-mid -->
+
+  <!-- ========================================================
+       PRAWA KOLUMNA
+       ======================================================== -->
+  <div class="col">
+    <div class="col-header col-header-orange">CNN w literaturze – wyniki porównawcze</div>
+
+    <!-- Box 1: Piłka nożna -->
+    <div class="box box-orange">
+      <span class="box-label">Literatura &#183; [1]</span>
+      <h2 class="orange">Piłka nożna – numery koszulkowe</h2>
+      <div class="cite-badge"><span class="cnum">[1]</span> Gerke et al. – <em>Soccer Jersey Number Recognition Using CNNs</em>, CVPR Workshops, 2015</div>
+      <p>
+        Klasyczny HOG+SVM osiąga dokładność ok.&nbsp;<strong>0,40</strong> w rozpoznawaniu
+        numerów na koszulkach piłkarzy. Podejście CNN dla tego samego zadania dochodzi do
+        ok.&nbsp;<strong>0,83</strong> – poprawa o ponad 100&nbsp;% względem metody klasycznej.
+      </p>
+
+      <!-- Vertical bar chart (HOG+SVM vs CNN) -->
+      <!-- Max bar = 160px. Scale: max=0.83 → 160px; 0.40 → 0.40/0.83*160 = 77px -->
+      <div class="vchart-wrap">
+        <div class="vchart-area">
+          <div class="vbc">
+            <span class="vbv">0,40</span>
+            <div class="vb" style="height:106px; background:#22d3ee;"></div>
+          </div>
+          <div class="vbc">
+            <span class="vbv">0,83</span>
+            <div class="vb" style="height:220px; background:#fb923c;"></div>
+          </div>
+        </div>
+        <div class="vchart-labels">
+          <span>HOG+SVM<br><em style="font-size:11px;color:#22d3ee;">klasyczny</em></span>
+          <span>CNN<br><em style="font-size:11px;color:#fb923c;">nowoczesny</em></span>
+        </div>
+      </div>
+      <div class="note-box">Źródło: Gerke et al. (2015), CVPR Workshops. Wyniki nie z naszych eksperymentów.</div>
+    </div>
+
+    <!-- Box 2: Bib numbers maraton -->
+    <div class="box box-orange">
+      <span class="box-label">Literatura &#183; [2]</span>
+      <h2 class="orange">Bib numbers – maraton</h2>
+      <div class="cite-badge"><span class="cnum">[2]</span> <em>Racing Bib Number Recognition Using Deep Learning</em>, arXiv / konferencja CV</div>
+      <p>
+        Model CNN do jednoczesnej detekcji i rozpoznawania numerów startowych zawodników
+        biegu maratońskiego osiąga bardzo wysoką skuteczność na zbiorze testowym
+        zdjęć z zawodów.
+      </p>
+
+      <!-- 3 bars. Scale: max=0.95 → 160px; 0.93→157px; 0.94→158px -->
+      <div class="vchart-wrap">
+        <div class="vchart-area">
+          <div class="vbc">
+            <span class="vbv">0,93</span>
+            <div class="vb" style="height:215px; background:#fb923c;"></div>
+          </div>
+          <div class="vbc">
+            <span class="vbv">0,95</span>
+            <div class="vb" style="height:220px; background:#f97316;"></div>
+          </div>
+          <div class="vbc">
+            <span class="vbv">0,94</span>
+            <div class="vb" style="height:218px; background:#ea580c;"></div>
+          </div>
+        </div>
+        <div class="vchart-labels">
+          <span>Recall</span>
+          <span>Precision</span>
+          <span>F1-score</span>
+        </div>
+      </div>
+      <div class="note-box">Źródło: [2] Racing Bib Number Recognition Using Deep Learning. Wyniki nie z naszych eksperymentów.</div>
+    </div>
+
+    <!-- Box 3: Mały zbiór + syntetyczne -->
+    <div class="box box-orange">
+      <span class="box-label">Literatura &#183; [3]</span>
+      <h2 class="orange">Mały zbiór + dane syntetyczne</h2>
+      <div class="cite-badge"><span class="cnum">[3]</span> <em>Jersey Number Detection Using Synthetic Data in a Low-Data Regime</em>, CVPR Workshops</div>
+      <p>
+        Baseline CNN wytrenowany na małym zbiorze realistycznych zdjęć osiąga
+        accuracy ok.&nbsp;<strong>0,80</strong>. Uzupełnienie trenowania wygenerowanymi
+        danymi syntetycznymi podnosi wynik do ok.&nbsp;<strong>0,89</strong> – zysk&nbsp;9&nbsp;pp,
+        szczególnie istotny dla rzadkich numerów startowych (+18&nbsp;pp dla rzadkich numerów).
+      </p>
+
+      <!-- 2 bars. Scale: max=0.89 → 160px; 0.80→0.80/0.89*160=144px -->
+      <div class="vchart-wrap">
+        <div class="vchart-area">
+          <div class="vbc">
+            <span class="vbv">0,80</span>
+            <div class="vb" style="height:198px; background:#fb923c;"></div>
+          </div>
+          <div class="vbc">
+            <span class="vbv" style="color:#4ade80;">0,89</span>
+            <div class="vb" style="height:220px; background:#f97316;"></div>
+          </div>
+        </div>
+        <div class="vchart-labels">
+          <span>CNN<br><em style="font-size:11px;">baseline</em></span>
+          <span>CNN + dane<br>syntetyczne</span>
+        </div>
+      </div>
+
+      <!-- gain badge -->
+      <div style="display:flex;justify-content:center;">
+        <div style="background:rgba(74,222,128,0.12);border:1px solid rgba(74,222,128,0.3);border-radius:20px;padding:6px 16px;font-size:13px;color:#4ade80;font-weight:700;">
+          + 9 punktów procentowych dzieki danym syntetycznym
+        </div>
+      </div>
+      <div class="note-box">Źródło: [3] Jersey Number Detection Using Synthetic Data in a Low-Data Regime. Wyniki nie z naszych eksperymentów.</div>
+    </div>
+
+    <!-- Box 4: Zestawienie zbiorcze -->
+    <div class="box box-orange">
+      <span class="box-label">Zestawienie – literatura i nasz projekt</span>
+      <h2 class="orange">Przegląd wyników – metody vs CNN</h2>
+      <p>
+        Porównanie wszystkich odnotowanych wyników – naszego projektu i danych z literatury –
+        w jednym zestawieniu. Podkreśla skalę różnicy między metodami klasycznymi a CNN.
+      </p>
+
+      <!-- Comparison table -->
+      <div style="display:flex;flex-direction:column;gap:0;border-radius:8px;overflow:hidden;border:1px solid #334155;">
+        <!-- Header row -->
+        <div style="display:grid;grid-template-columns:2fr 1.2fr 1fr;background:#0f172a;padding:8px 12px;gap:8px;">
+          <div style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:1px;">Zadanie / metoda</div>
+          <div style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:1px;">Wynik</div>
+          <div style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:1px;">Źródło</div>
+        </div>
+        <!-- Row 1 -->
+        <div style="display:grid;grid-template-columns:2fr 1.2fr 1fr;background:#1e293b;padding:9px 12px;gap:8px;border-top:1px solid #334155;">
+          <div style="font-size:13px;color:#e2e8f0;">HOG+SVM – detekcja osób</div>
+          <div style="font-size:13px;color:#22d3ee;font-weight:700;">P=0,25 / R=0,30</div>
+          <div style="font-size:12px;color:#64748b;">nasz projekt</div>
+        </div>
+        <!-- Row 2 -->
+        <div style="display:grid;grid-template-columns:2fr 1.2fr 1fr;background:#172032;padding:9px 12px;gap:8px;border-top:1px solid #334155;">
+          <div style="font-size:13px;color:#e2e8f0;">MSER – regiony numerów</div>
+          <div style="font-size:13px;color:#22d3ee;font-weight:700;">R=0,20 / FP&#8776;20</div>
+          <div style="font-size:12px;color:#64748b;">nasz projekt</div>
+        </div>
+        <!-- Row 3 -->
+        <div style="display:grid;grid-template-columns:2fr 1.2fr 1fr;background:#1e293b;padding:9px 12px;gap:8px;border-top:1px solid #334155;">
+          <div style="font-size:13px;color:#e2e8f0;">HOG+SVM – koszulki piłkarzy</div>
+          <div style="font-size:13px;color:#22d3ee;font-weight:700;">Acc = 0,40</div>
+          <div style="font-size:12px;color:#fb923c;font-weight:700;">[1]</div>
+        </div>
+        <!-- Divider label -->
+        <div style="background:#0f172a;padding:5px 12px;border-top:1px solid #334155;display:flex;align-items:center;gap:8px;">
+          <div style="flex:1;height:1px;background:#fb923c44;"></div>
+          <div style="font-size:11px;color:#fb923c;font-weight:700;letter-spacing:1px;">CNN</div>
+          <div style="flex:1;height:1px;background:#fb923c44;"></div>
+        </div>
+        <!-- Row 4 -->
+        <div style="display:grid;grid-template-columns:2fr 1.2fr 1fr;background:#1e293b;padding:9px 12px;gap:8px;border-top:1px solid #334155;">
+          <div style="font-size:13px;color:#e2e8f0;">CNN – koszulki piłkarzy</div>
+          <div style="font-size:13px;color:#fb923c;font-weight:700;">Acc = 0,83</div>
+          <div style="font-size:12px;color:#fb923c;font-weight:700;">[1]</div>
+        </div>
+        <!-- Row 5 -->
+        <div style="display:grid;grid-template-columns:2fr 1.2fr 1fr;background:#172032;padding:9px 12px;gap:8px;border-top:1px solid #334155;">
+          <div style="font-size:13px;color:#e2e8f0;">CNN – bib numbers (maraton)</div>
+          <div style="font-size:13px;color:#fb923c;font-weight:700;">F1 = 0,94</div>
+          <div style="font-size:12px;color:#fb923c;font-weight:700;">[2]</div>
+        </div>
+        <!-- Row 6 -->
+        <div style="display:grid;grid-template-columns:2fr 1.2fr 1fr;background:#1e293b;padding:9px 12px;gap:8px;border-top:1px solid #334155;">
+          <div style="font-size:13px;color:#e2e8f0;">CNN + dane syntetyczne</div>
+          <div style="font-size:13px;color:#fb923c;font-weight:700;">Acc = 0,89</div>
+          <div style="font-size:12px;color:#fb923c;font-weight:700;">[3]</div>
+        </div>
+      </div>
+
+      <!-- Delta summary -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">
+        <div style="background:#0c1e10;border:1px solid rgba(74,222,128,0.25);border-radius:8px;padding:12px;text-align:center;">
+          <div style="font-size:22px;font-weight:900;color:#4ade80;">+43 pp</div>
+          <div style="font-size:12px;color:#64748b;margin-top:4px;">Zysk CNN vs HOG+SVM<br>(koszulki piłkarzy)</div>
+        </div>
+        <div style="background:#0c1e10;border:1px solid rgba(74,222,128,0.25);border-radius:8px;padding:12px;text-align:center;">
+          <div style="font-size:22px;font-weight:900;color:#4ade80;">+64 pp</div>
+          <div style="font-size:12px;color:#64748b;margin-top:4px;">CNN vs nasz HOG+SVM<br>(detekcja end-to-end)</div>
+        </div>
+      </div>
+      <div class="note-box">Tabela łączy wyniki naszego projektu i benchmarki z literatury naukowej.</div>
+    </div>
+
+  </div><!-- /col-right -->
+
+  <!-- ========================================================
+       FOOTER – WNIOSKI
+       ======================================================== -->
+  <footer class="poster-footer">
+    <h2>Wnioski</h2>
+    <div class="footer-grid">
+      <div class="footer-item">
+        <span class="footer-bullet">&#9654;</span>
+        <p>Klasyczne metody HOG+SVM i MSER zawodzą przy ruchu i motion blur – niski recall (0,20–0,30) i liczne false positives (15–30 / obraz) uniemożliwiają praktyczne zastosowanie w realnych zawodach.</p>
+      </div>
+      <div class="footer-item">
+        <span class="footer-bullet" style="color:#fb923c;">&#9654;</span>
+        <p>CNN w literaturze osiągają 80–94&nbsp;% dokładności w podobnych zadaniach (rozpoznawanie numerów na koszulkach, bib numbers maratonów), przewyższając metody klasyczne o kilkadziesiąt punktów procentowych.</p>
+      </div>
+      <div class="footer-item">
+        <span class="footer-bullet" style="color:#818cf8;">&#9654;</span>
+        <p>Nasz projekt zbudował kompletną infrastrukturę przetwarzania danych: automatyczne zbieranie zdjęć, Google Drive, preprocessing grass-aware, Roboflow oraz dataset gotowy do trenowania YOLO.</p>
+      </div>
+      <div class="footer-item">
+        <span class="footer-bullet" style="color:#4ade80;">&#9654;</span>
+        <p>Kolejny krok: implementacja i ewaluacja detektora YOLOv8 oraz modułu CNN na naszym zbiorze, a następnie pełne porównanie wyników z klasycznym pipeline'em HOG+SVM/MSER.</p>
+      </div>
+    </div>
+  </footer>
+
+</div><!-- /poster -->
+</body>
+</html>

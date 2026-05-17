@@ -60,11 +60,11 @@ class RoboflowClient:
 
             if version_response.status_code == 200:
                 print(
-                    f"✓ Successfully authenticated with Roboflow (v{self.version} available)"
+                    f"[OK] Successfully authenticated with Roboflow (v{self.version} available)"
                 )
             else:
                 print(
-                    f"✓ Successfully authenticated with Roboflow (v{self.version} not yet published)"
+                    f"[OK] Successfully authenticated with Roboflow (v{self.version} not yet published)"
                 )
 
             self.credentials_valid = True
@@ -94,21 +94,42 @@ class RoboflowClient:
         try:
             print(f"Downloading {self.project} v{self.version} ({format} format)...")
 
-            url = f"{self.BASE_URL}/{self.workspace}/{self.project}/{self.version}"
-            params = {
-                "api_key": self.api_key,
-                "format": format,
-            }
+            # Step 1: Request export and poll until Roboflow finishes generating it.
+            # The format must be a path segment, not a query parameter.
+            export_url = (
+                f"{self.BASE_URL}/{self.workspace}/{self.project}"
+                f"/{self.version}/{format}"
+            )
+            params = {"api_key": self.api_key}
 
-            response = self.session.get(url, params=params, timeout=300)
-            response.raise_for_status()
+            import time
+            download_link = None
+            for attempt in range(20):
+                export_response = self.session.get(export_url, params=params, timeout=60)
+                export_response.raise_for_status()
+                export_data = export_response.json()
+                download_link = export_data.get("export", {}).get("link")
+                if download_link:
+                    break
+                progress = export_data.get("progress", 0)
+                print(f"  Export generating... progress={progress} (attempt {attempt + 1}/20)")
+                time.sleep(3)
 
-            # Save zip file
+            if not download_link:
+                raise RuntimeError(
+                    f"Timed out waiting for Roboflow export. Last response: {export_data}"
+                )
+
+            # Step 2: Download the actual zip from the signed URL
+            zip_response = self.session.get(download_link, timeout=300, stream=True)
+            zip_response.raise_for_status()
+
             zip_path = output_dir / f"{self.project}_v{self.version}.zip"
             with open(zip_path, "wb") as f:
-                f.write(response.content)
+                for chunk in zip_response.iter_content(chunk_size=8192):
+                    f.write(chunk)
 
-            print(f"✓ Downloaded {zip_path.name}")
+            print(f"[OK] Downloaded {zip_path.name}")
 
             if extract:
                 return self._extract_dataset(zip_path, output_dir)
@@ -167,7 +188,7 @@ class RoboflowClient:
                 shutil.rmtree(temp_extract_dir)
             zip_path.unlink()
 
-            print(f"✓ Extracted to {final_dir.name}")
+            print(f"[OK] Extracted to {final_dir.name}")
             return final_dir
 
         except Exception as e:
@@ -310,6 +331,33 @@ class RoboflowClient:
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Failed to list versions: {e}")
 
+    def upload_image(self, file_path: Path) -> bool:
+        """
+        Upload a single image to the Roboflow project.
+
+        Args:
+            file_path: Local path to the image file
+
+        Returns:
+            True on success, False on failure
+        """
+        try:
+            from roboflow import Roboflow
+        except ImportError:
+            print("❌ roboflow package not installed. Run: uv add roboflow")
+            return False
+
+        try:
+            # Cache the project object so workspace/project aren't re-fetched per image
+            if not hasattr(self, "_rf_project"):
+                rf = Roboflow(api_key=self.api_key)
+                self._rf_project = rf.workspace(self.workspace).project(self.project)
+            self._rf_project.upload(image_path=str(file_path), num_retry_uploads=3)
+            return True
+        except Exception as e:
+            print(f"⚠️  Failed to upload {file_path.name} to Roboflow: {e}")
+            return False
+
     def save_metadata(
         self,
         output_dir: Path,
@@ -349,7 +397,7 @@ class RoboflowClient:
             with open(metadata_path, "w") as f:
                 json.dump(full_metadata, f, indent=2)
 
-            print(f"✓ Saved metadata to {metadata_path.name}")
+            print(f"[OK] Saved metadata to {metadata_path.name}")
             return metadata_path
 
         except Exception as e:

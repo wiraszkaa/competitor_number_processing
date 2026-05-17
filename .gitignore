@@ -13,3 +13,6 @@ secrets/*
 !secrets/config.example.json
 
 cache/*
+
+.claude
+.playwright-mcp
