@@ -16,3 +16,4 @@ cache/*
 
 .claude
 .playwright-mcp
+yolov8n.pt
